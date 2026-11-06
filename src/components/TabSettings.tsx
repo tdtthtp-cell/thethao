@@ -55,6 +55,7 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
   const [newAccPass, setNewAccPass] = useState('');
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [resetPassInput, setResetPassInput] = useState('');
+  const [userSearchQuery, setUserSearchQuery] = useState('');
 
   const isAdmin = currentUser.role === 'admin';
 
@@ -86,6 +87,15 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAccUser.trim() || !newAccPass.trim()) return alert('Vui lòng điền đủ tên đăng nhập & mật khẩu!');
+    if (users.length >= 30) {
+      return alert('Hệ thống đã đạt giới hạn tối đa 30 tài khoản người dùng! Vui lòng xóa bớt tài khoản nếu muốn cấp thêm.');
+    }
+    const exists = users.some(
+      (u) => u.username.toLowerCase() === newAccUser.trim().toLowerCase()
+    );
+    if (exists) {
+      return alert('Tên đăng nhập này đã tồn tại trong hệ thống!');
+    }
 
     const newAcc: UserAccount = {
       id: 'U_' + Date.now(),
@@ -93,14 +103,23 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
       password: newAccPass.trim(),
       displayName: newAccName.trim() || newAccUser.trim(),
       role: newAccRole,
-      title: newAccRole === 'admin' ? 'Trưởng BTC' : newAccRole === 'referee' ? 'Trọng tài' : 'Thư ký',
+      title:
+        newAccRole === 'admin'
+          ? 'Ban Tổ Chức (Admin)'
+          : newAccRole === 'referee'
+          ? 'Trọng Tài Chính'
+          : newAccRole === 'secretary'
+          ? 'Thư Ký Bàn'
+          : newAccRole === 'athlete'
+          ? 'Đội Trưởng / VĐV'
+          : 'Khách Xem',
       createdAt: new Date().toISOString().slice(0, 10),
     };
     onSaveUser(newAcc);
     setNewAccUser('');
     setNewAccName('');
     setNewAccPass('');
-    alert('Đã cấp tài khoản thành công!');
+    alert(`Đã cấp tài khoản "${newAcc.username}" thành công (${users.length + 1}/30 tài khoản)!`);
   };
 
   return (
@@ -288,11 +307,54 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
             </form>
 
             {/* Users Table */}
-            <div className="lg:col-span-2 space-y-2">
-              <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-2xl">
+            <div className="lg:col-span-2 space-y-3">
+              {/* Account Quota Bar (Up to 30 accounts) */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Shield className="w-4 h-4 text-sky-600" />
+                    <span>Dung lượng tài khoản hệ thống:</span>
+                  </span>
+                  <span className="font-mono font-extrabold text-sky-600 dark:text-sky-400">
+                    {users.length} / 30 tài khoản
+                  </span>
+                </div>
+                <div className="w-full bg-slate-200 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full transition-all duration-300 ${
+                      users.length >= 30
+                        ? 'bg-rose-500'
+                        : users.length >= 25
+                        ? 'bg-amber-500'
+                        : 'bg-gradient-to-r from-sky-500 to-indigo-500'
+                    }`}
+                    style={{ width: `${Math.min(100, (users.length / 30) * 100)}%` }}
+                  />
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-slate-400">
+                  <span>Hỗ trợ tối đa 30 trọng tài, thư ký, HLV & BTC</span>
+                  <span>Còn lại: {Math.max(0, 30 - users.length)} chỗ</span>
+                </div>
+              </div>
+
+              {/* User search toolbar */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300">
+                  Danh Sách Tài Khoản Đã Cấp ({users.length})
+                </div>
+                <input
+                  type="text"
+                  value={userSearchQuery}
+                  onChange={(e) => setUserSearchQuery(e.target.value)}
+                  placeholder="Tìm tài khoản, họ tên..."
+                  className="px-2.5 py-1 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg outline-none w-44"
+                />
+              </div>
+
+              <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-2xl max-h-80 overflow-y-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
-                    <tr className="bg-slate-100 dark:bg-slate-800 text-slate-400 uppercase text-[10px] font-semibold">
+                    <tr className="bg-slate-100 dark:bg-slate-800 text-slate-400 uppercase text-[10px] font-semibold sticky top-0">
                       <th className="p-2.5">Tài Khoản</th>
                       <th className="p-2.5">Họ Tên</th>
                       <th className="p-2.5">Vai Trò</th>
@@ -300,7 +362,15 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                    {users.map((u) => (
+                    {users
+                      .filter(
+                        (u) =>
+                          !userSearchQuery.trim() ||
+                          u.username.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                          u.displayName.toLowerCase().includes(userSearchQuery.toLowerCase()) ||
+                          u.role.toLowerCase().includes(userSearchQuery.toLowerCase())
+                      )
+                      .map((u) => (
                       <tr key={u.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
                         <td className="p-2.5 font-bold font-mono text-sky-600 dark:text-sky-400">{u.username}</td>
                         <td className="p-2.5 font-semibold text-slate-800 dark:text-slate-200">{u.displayName}</td>

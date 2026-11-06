@@ -207,6 +207,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       return;
     }
 
+    if (users.length >= 30) {
+      alert('Hệ thống đã đạt giới hạn tối đa 30 tài khoản người dùng! Vui lòng xóa bớt tài khoản nếu muốn cấp thêm.');
+      return;
+    }
+
     const exists = users.some(
       (u) => u.username.toLowerCase() === newAccUsername.trim().toLowerCase()
     );
@@ -632,8 +637,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
             {/* Existing Users Table with Role and Reset Password */}
             <div className="space-y-2">
-              <div className="text-xs font-bold uppercase text-slate-700 dark:text-slate-300">
-                Danh Sách Người Dùng & Quản Trị Mật Khẩu
+              <div className="flex items-center justify-between text-xs font-bold uppercase text-slate-700 dark:text-slate-300">
+                <span>Danh Sách Người Dùng & Quản Trị Mật Khẩu</span>
+                <span className="font-mono text-sky-600 dark:text-sky-400 font-bold lowercase text-[11px]">
+                  {users.length}/30 tài khoản
+                </span>
               </div>
               <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-2xl">
                 <table className="w-full text-left text-xs border-collapse">

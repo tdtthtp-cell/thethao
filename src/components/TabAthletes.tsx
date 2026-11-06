@@ -17,6 +17,7 @@ import {
   AlertTriangle,
   CheckSquare,
   Square,
+  LogIn,
 } from 'lucide-react';
 import { Athlete, Team, TournamentConfig, UserProfile } from '../types';
 import { decryptText, maskSensitive } from '../services/crypto';
@@ -26,6 +27,7 @@ interface TabAthletesProps {
   teams: Team[];
   config: TournamentConfig;
   user: UserProfile;
+  onOpenLogin?: () => void;
   onOpenAddAthlete: () => void;
   onOpenEditAthlete: (athlete: Athlete) => void;
   onDeleteAthlete: (athleteId: string) => void;
@@ -42,6 +44,7 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
   teams,
   config,
   user,
+  onOpenLogin,
   onOpenAddAthlete,
   onOpenEditAthlete,
   onDeleteAthlete,
@@ -241,7 +244,7 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {/* View Mode Toggle */}
           <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs font-semibold">
             <button
@@ -266,7 +269,7 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
             </button>
           </div>
 
-          {canRegister && (
+          {canRegister ? (
             <button
               onClick={viewMode === 'athletes' ? onOpenAddAthlete : () => setIsAddingTeam(true)}
               className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
@@ -274,9 +277,66 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
               <UserPlus className="w-3.5 h-3.5" />
               <span>{viewMode === 'athletes' ? 'Đăng Ký VĐV' : 'Thêm Đội Mới'}</span>
             </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenLogin}
+              className="px-4 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Đăng Nhập Để Thêm VĐV / Đội</span>
+            </button>
           )}
         </div>
       </div>
+
+      {/* QUICK LOGIN BANNER IN ATHLETE REGISTRATION AREA */}
+      {!canRegister ? (
+        <div className="p-4 sm:p-5 bg-gradient-to-r from-sky-50 via-indigo-50 to-blue-50 dark:from-slate-900 dark:via-blue-950/40 dark:to-indigo-950/30 rounded-3xl border border-sky-200 dark:border-sky-900/60 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-sky-600 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-md">
+              <LogIn className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2">
+                <span>Khu Vực Đăng Ký VĐV & Quản Lý Đội Bóng</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-sky-200 dark:bg-sky-900 text-sky-800 dark:text-sky-200 font-bold">
+                  Yêu Cầu Đăng Nhập
+                </span>
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                Bạn đang truy cập với tư cách <strong>Khách xem</strong>. Huấn luyện viên, Đội trưởng hoặc Ban tổ chức vui lòng đăng nhập để nộp hồ sơ vận động viên và tạo danh sách đội bóng.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onOpenLogin}
+            className="px-5 py-2.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-md cursor-pointer shrink-0"
+          >
+            <LogIn className="w-4 h-4" />
+            <span>Đăng Nhập Ngay</span>
+          </button>
+        </div>
+      ) : (
+        <div className="px-4 py-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/60 rounded-2xl flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-800 dark:text-emerald-200">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span>
+              Đã xác thực tài khoản: <strong>{user.displayName || user.username}</strong> ({user.title})
+            </span>
+          </div>
+          {onOpenLogin && (
+            <button
+              type="button"
+              onClick={onOpenLogin}
+              className="text-emerald-700 dark:text-emerald-300 hover:underline font-semibold text-[11px] cursor-pointer"
+            >
+              Chuyển đổi tài khoản khác →
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Filter and Search Toolbar */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-wrap items-center justify-between gap-3">

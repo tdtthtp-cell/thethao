@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Calendar,
   Play,
@@ -17,10 +17,12 @@ import {
   Users,
   AlertCircle,
   Keyboard,
+  GitBranch,
 } from 'lucide-react';
-import { Match, Sport, Team, TournamentConfig, UserProfile } from '../types';
+import { Match, Sport, StandingItem, Team, TournamentConfig, UserProfile } from '../types';
 import { playRefereeWhistle, playScoreChime } from '../services/sound';
 import { sendSmartNotification } from '../services/notifications';
+import { ScheduleGeneratorModal } from './ScheduleGeneratorModal';
 
 interface TabMatchesProps {
   matches: Match[];
@@ -28,11 +30,13 @@ interface TabMatchesProps {
   sports: Sport[];
   config: TournamentConfig;
   user: UserProfile;
+  standingsByGroup?: Record<string, StandingItem[]>;
   onNavigateTab?: (tabId: string) => void;
   onUpdateMatch: (match: Match) => void;
   onAddMatch: (match: Match) => void;
   onDeleteMatch: (id: string) => void;
   onGenerateSchedule: (customTeamsList?: Team[], startDate?: string, startHour?: number, intervalMinutes?: number) => void;
+  onApplyMatchesBatch?: (newMatches: Match[], appendMode: boolean, noticeMsg: string) => void;
   onOpenMinutes: (match: Match) => void;
   onOpenEditMatch: (match: Match) => void;
 }
@@ -43,11 +47,13 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
   sports,
   config,
   user,
+  standingsByGroup = {},
   onNavigateTab,
   onUpdateMatch,
   onAddMatch,
   onDeleteMatch,
   onGenerateSchedule,
+  onApplyMatchesBatch,
   onOpenMinutes,
   onOpenEditMatch,
 }) => {
@@ -57,6 +63,17 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
     matches.find((m) => m.status === 'LIVE')?.id || null
   );
   const [quickScoreMatch, setQuickScoreMatch] = useState<Match | null>(null);
+
+  const extraStages = useMemo(() => {
+    const customSet = new Set(config.customGroups);
+    const set = new Set<string>();
+    matches.forEach((m) => {
+      if (m.stage && !customSet.has(m.stage)) {
+        set.add(m.stage);
+      }
+    });
+    return Array.from(set);
+  }, [matches, config.customGroups]);
 
   const canScore = user.role === 'admin' || user.role === 'referee' || user.role === 'secretary';
   const isAdmin = user.role === 'admin';
@@ -222,10 +239,7 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
     );
   };
 
-  const [isAutoScheduleModalOpen, setIsAutoScheduleModalOpen] = useState(false);
-  const [schedDate, setSchedDate] = useState(new Date().toISOString().slice(0, 10));
-  const [schedTime, setSchedTime] = useState('08:00');
-  const [schedInterval, setSchedInterval] = useState(45);
+  const [isScheduleGeneratorModalOpen, setIsScheduleGeneratorModalOpen] = useState(false);
   const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
 
   const handleAddNewManualMatch = () => {
@@ -302,11 +316,11 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setIsAutoScheduleModalOpen(true)}
-                className="px-4 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                onClick={() => setIsScheduleGeneratorModalOpen(true)}
+                className="px-4 py-2 bg-gradient-to-r from-sky-600 via-indigo-600 to-purple-600 hover:from-sky-500 hover:to-purple-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
                 <Wand2 className="w-4 h-4" />
-                <span>Tạo Lịch Tự Động</span>
+                <span>Xếp Lịch & Tạo Vòng Đấu</span>
               </button>
             </>
           )}
@@ -659,16 +673,29 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
       {/* Matches List Filter */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2 text-xs">
-          <span className="text-slate-500 font-medium">Bảng/Khối:</span>
+          <span className="text-slate-500 font-medium">Bảng / Vòng Đấu:</span>
           <select
             value={filterGroup}
             onChange={(e) => setFilterGroup(e.target.value)}
-            className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs"
+            className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-semibold"
           >
-            <option value="ALL">Tất cả bảng đấu</option>
-            {config.customGroups.map((g) => (
-              <option key={g} value={g}>{g}</option>
-            ))}
+            <option value="ALL">👉 Tất cả bảng & vòng đấu ({matches.length} trận)</option>
+            <optgroup label="Vòng Bảng / Khối">
+              {config.customGroups.map((g) => (
+                <option key={g} value={g}>
+                  {g} ({matches.filter((m) => m.stage === g).length} trận)
+                </option>
+              ))}
+            </optgroup>
+            {extraStages.length > 0 && (
+              <optgroup label="Vòng Loại Trực Tiếp / Vòng Sau">
+                {extraStages.map((s: string) => (
+                  <option key={s} value={s}>
+                    {s} ({matches.filter((m: Match) => m.stage === s).length} trận)
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
 
@@ -833,159 +860,27 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
         )}
       </div>
 
-      {/* Auto Schedule Settings Modal */}
-      {isAutoScheduleModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-5 my-6">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-xs">
-                  <Wand2 className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-base text-slate-900 dark:text-white">
-                    Tạo Lịch Thi Đấu Tự Động
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Xếp cặp đấu vòng tròn theo bảng/khối và đồng bộ thời gian
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAutoScheduleModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-2 rounded-xl"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {teams.length < 2 ? (
-              <div className="space-y-4">
-                <div className="p-5 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 rounded-2xl space-y-3">
-                  <div className="flex items-center gap-2.5 text-sky-900 dark:text-sky-200 font-extrabold text-sm">
-                    <Users className="w-5 h-5 text-sky-600 shrink-0" />
-                    <span>Chưa có danh sách đội thi đấu để xếp lịch</span>
-                  </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Hệ thống không cài đặt danh sách mẫu. Để xếp lịch thi đấu, <strong>Ban tổ chức (BTC) cần nhập danh sách các đội tham gia thi đấu trước</strong> (tối thiểu 2 đội trong cùng bảng/khối).
-                  </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                    Sau khi BTC nhập xong danh sách đội, tính năng này sẽ tự động chia cặp đấu vòng tròn theo bảng/khối và gán giờ thi đấu tương ứng.
-                  </p>
-                </div>
-
-                <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAutoScheduleModalOpen(false);
-                      onNavigateTab?.('athletes');
-                    }}
-                    className="flex-1 py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-md cursor-pointer"
-                  >
-                    <Users className="w-4 h-4" />
-                    <span>👉 Đi Đến Nhập Danh Sách Đội / VĐV</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsAutoScheduleModalOpen(false)}
-                    className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold transition cursor-pointer"
-                  >
-                    Đóng
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="p-3 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-900 rounded-2xl flex items-center justify-between text-xs">
-                  <span className="text-slate-600 dark:text-slate-300">
-                    Số đội tham gia thi đấu: <strong className="text-sky-600 dark:text-sky-400 font-bold">{teams.length} đội</strong>
-                  </span>
-                  <span className="text-slate-400">
-                    {config.customGroups.length} bảng/khối
-                  </span>
-                </div>
-
-                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800">
-                  {teams.map((t) => (
-                    <span
-                      key={t.id}
-                      className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-700 dark:text-slate-300 rounded-lg"
-                    >
-                      {t.name} ({t.group})
-                    </span>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                      Ngày Bắt Đầu
-                    </label>
-                    <input
-                      type="date"
-                      value={schedDate}
-                      onChange={(e) => setSchedDate(e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                      Giờ Bắt Đầu
-                    </label>
-                    <input
-                      type="time"
-                      value={schedTime}
-                      onChange={(e) => setSchedTime(e.target.value)}
-                      className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                      Giãn Cách (Phút)
-                    </label>
-                    <select
-                      value={schedInterval}
-                      onChange={(e) => setSchedInterval(Number(e.target.value))}
-                      className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
-                    >
-                      <option value={30}>30 phút/trận</option>
-                      <option value={45}>45 phút/trận</option>
-                      <option value={60}>60 phút/trận</option>
-                      <option value={90}>90 phút/trận</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => setIsAutoScheduleModalOpen(false)}
-                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
-                  >
-                    Hủy Bỏ
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const hour = parseInt(schedTime.split(':')[0], 10) || 8;
-                      onGenerateSchedule(undefined, schedDate, hour, schedInterval);
-                      setIsAutoScheduleModalOpen(false);
-                      setScheduleNotice(`Đã tạo lịch thi đấu tự động cho ${teams.length} đội thành công!`);
-                    }}
-                    className="px-5 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
-                  >
-                    <Wand2 className="w-4 h-4" />
-                    <span>Xếp Lịch Ngay ({teams.length} Đội)</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {/* Auto Schedule & Knockout Rounds Progression Modal */}
+      <ScheduleGeneratorModal
+        isOpen={isScheduleGeneratorModalOpen}
+        onClose={() => setIsScheduleGeneratorModalOpen(false)}
+        teams={teams}
+        matches={matches}
+        config={config}
+        standingsByGroup={standingsByGroup}
+        onApplyMatches={(newMatches, appendMode, noticeMsg) => {
+          if (onApplyMatchesBatch) {
+            onApplyMatchesBatch(newMatches, appendMode, noticeMsg);
+          } else {
+            if (appendMode) {
+              newMatches.forEach((m) => onAddMatch(m));
+            } else {
+              onGenerateSchedule(teams);
+            }
+          }
+          setScheduleNotice(noticeMsg);
+        }}
+      />
 
       {/* Dedicated Quick Keyboard Score Entry Modal */}
       {quickScoreMatch && (

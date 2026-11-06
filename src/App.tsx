@@ -39,6 +39,7 @@ import {
   deleteUserFromFirestore,
 } from './services/firestoreSync';
 import { subscribeToSync, broadcastTournamentUpdate } from './services/notifications';
+import { playScoreChime } from './services/sound';
 import { Header } from './components/Header';
 import { MobileNav } from './components/MobileNav';
 import { OfflineIndicator } from './components/OfflineIndicator';
@@ -437,6 +438,23 @@ export default function App() {
     [teams, config]
   );
 
+  const handleApplyMatchesBatch = (
+    newGeneratedMatches: Match[],
+    appendMode: boolean,
+    noticeMsg: string
+  ) => {
+    let finalMatches: Match[];
+    if (appendMode) {
+      finalMatches = [...matches, ...newGeneratedMatches];
+    } else {
+      finalMatches = newGeneratedMatches;
+    }
+    setMatches(finalMatches);
+    syncAllMatchesToFirestore(finalMatches);
+    broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: finalMatches });
+    playScoreChime();
+  };
+
   // Handlers for Match updates
   const handleUpdateMatch = (updated: Match) => {
     setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
@@ -664,6 +682,7 @@ export default function App() {
             teams={teams}
             config={config}
             user={currentUser}
+            onOpenLogin={() => setIsAuthOpen(true)}
             onOpenAddAthlete={() => {
               setEditingAthlete(null);
               setIsAthleteModalOpen(true);
@@ -689,11 +708,13 @@ export default function App() {
             sports={sports}
             config={config}
             user={currentUser}
+            standingsByGroup={standingsByGroup}
             onNavigateTab={setActiveTab}
             onUpdateMatch={handleUpdateMatch}
             onAddMatch={handleAddMatch}
             onDeleteMatch={handleDeleteMatch}
             onGenerateSchedule={handleGenerateSchedule}
+            onApplyMatchesBatch={handleApplyMatchesBatch}
             onOpenMinutes={(m) => {
               setSelectedMinutesMatch(m);
               setIsMinutesModalOpen(true);
