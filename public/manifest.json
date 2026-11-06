@@ -1,0 +1,19 @@
+{
+  "id": "/",
+  "name": "Hệ Thống Quản Lý Thi Đấu Thể Thao",
+  "short_name": "QuảnLýThiĐấu",
+  "description": "Quản lý thi đấu thể thao học sinh: Đăng ký VĐV, cập nhật tỉ số trực tiếp, xếp hạng tự động, bảo mật E2EE.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0284c7",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

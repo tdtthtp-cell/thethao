@@ -1,0 +1,135 @@
+{
+  "entities": {
+    "TournamentConfig": {
+      "title": "TournamentConfig",
+      "description": "Cấu hình giải đấu thể thao học sinh",
+      "type": "object",
+      "properties": {
+        "schoolName": { "type": "string" },
+        "deptName": { "type": "string" },
+        "tournamentName": { "type": "string" },
+        "organizer": { "type": "string" },
+        "referee": { "type": "string" },
+        "secretary": { "type": "string" },
+        "activeSportId": { "type": "string" },
+        "themeColor": { "type": "string" },
+        "e2eeEnabled": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "Sport": {
+      "title": "Sport",
+      "description": "Môn thi đấu thể thao",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "code": { "type": "string" },
+        "maxSets": { "type": "number" },
+        "pointScheme": { "type": "string" },
+        "ptsWin": { "type": "number" },
+        "ptsDraw": { "type": "number" },
+        "ptsLoss": { "type": "number" },
+        "icon": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["id", "name", "code"]
+    },
+    "Team": {
+      "title": "Team",
+      "description": "Đội hoặc lớp thi đấu",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "group": { "type": "string" },
+        "coachName": { "type": "string" },
+        "contactPhone": { "type": "string" },
+        "color": { "type": "string" }
+      },
+      "required": ["id", "name", "group"]
+    },
+    "Athlete": {
+      "title": "Athlete",
+      "description": "Hồ sơ vận động viên học sinh",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "teamId": { "type": "string" },
+        "teamName": { "type": "string" },
+        "group": { "type": "string" },
+        "jerseyNumber": { "type": "number" },
+        "position": { "type": "string" },
+        "dateOfBirth": { "type": "string" },
+        "nationalIdEncrypted": { "type": "string" },
+        "phoneEncrypted": { "type": "string" },
+        "status": { "type": "string" },
+        "registeredAt": { "type": "string" },
+        "goalsOrPoints": { "type": "number" },
+        "mvpCount": { "type": "number" }
+      },
+      "required": ["id", "name", "teamId", "jerseyNumber"]
+    },
+    "Match": {
+      "title": "Match",
+      "description": "Trận đấu và tỉ số trực tiếp thời gian thực",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string" },
+        "stage": { "type": "string" },
+        "pitch": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "status": { "type": "string" },
+        "home": { "type": "object" },
+        "away": { "type": "object" },
+        "scores": { "type": "object" },
+        "timer": { "type": "object" },
+        "events": { "type": "array" }
+      },
+      "required": ["id", "code", "stage", "status"]
+    },
+    "NotificationItem": {
+      "title": "NotificationItem",
+      "description": "Thông báo hệ thống và sự kiện giải đấu",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string" },
+        "read": { "type": "boolean" }
+      },
+      "required": ["id", "title", "message"]
+    }
+  },
+  "firestore": {
+    "/config/{configDocId}": {
+      "schema": { "$ref": "#/entities/TournamentConfig" },
+      "description": "Cấu hình chung của giải đấu"
+    },
+    "/sports/{sportId}": {
+      "schema": { "$ref": "#/entities/Sport" },
+      "description": "Danh sách các môn thi đấu"
+    },
+    "/teams/{teamId}": {
+      "schema": { "$ref": "#/entities/Team" },
+      "description": "Danh sách các đội bóng và lớp tham gia giải"
+    },
+    "/athletes/{athleteId}": {
+      "schema": { "$ref": "#/entities/Athlete" },
+      "description": "Danh sách hồ sơ vận động viên"
+    },
+    "/matches/{matchId}": {
+      "schema": { "$ref": "#/entities/Match" },
+      "description": "Lịch thi đấu, tỉ số các set và diễn biến trận đấu trực tiếp"
+    },
+    "/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/NotificationItem" },
+      "description": "Thông báo thời gian thực gửi tới tất cả thiết bị"
+    }
+  }
+}

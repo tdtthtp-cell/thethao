@@ -1,0 +1,787 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Calendar,
+  Play,
+  Pause,
+  Plus,
+  Minus,
+  FileText,
+  Volume2,
+  Trash2,
+  Wand2,
+  Clock,
+  Edit,
+  UserCheck,
+  X,
+  Sparkles,
+  CheckCircle2,
+  Users,
+} from 'lucide-react';
+import { Match, Sport, Team, TournamentConfig, UserProfile } from '../types';
+import { playRefereeWhistle, playScoreChime } from '../services/sound';
+import { sendSmartNotification } from '../services/notifications';
+
+interface TabMatchesProps {
+  matches: Match[];
+  teams: Team[];
+  sports: Sport[];
+  config: TournamentConfig;
+  user: UserProfile;
+  onUpdateMatch: (match: Match) => void;
+  onAddMatch: (match: Match) => void;
+  onDeleteMatch: (id: string) => void;
+  onGenerateSchedule: (customTeamsList?: Team[], startDate?: string, startHour?: number, intervalMinutes?: number) => void;
+  onOpenMinutes: (match: Match) => void;
+  onOpenEditMatch: (match: Match) => void;
+}
+
+export const TabMatches: React.FC<TabMatchesProps> = ({
+  matches,
+  teams,
+  sports,
+  config,
+  user,
+  onUpdateMatch,
+  onAddMatch,
+  onDeleteMatch,
+  onGenerateSchedule,
+  onOpenMinutes,
+  onOpenEditMatch,
+}) => {
+  const [filterGroup, setFilterGroup] = useState<string>('ALL');
+  const [filterStatus, setFilterStatus] = useState<string>('ALL');
+  const [activeScoringMatchId, setActiveScoringMatchId] = useState<string | null>(
+    matches.find((m) => m.status === 'LIVE')?.id || null
+  );
+
+  const canScore = user.role === 'admin' || user.role === 'referee' || user.role === 'secretary';
+  const isAdmin = user.role === 'admin';
+
+  const currentSport = sports.find((s) => s.id === config.activeSportId) || sports[0];
+  const isFootball = currentSport?.code === 'FOOTBALL' || config.activeSportId === 'football';
+  const maxSets = currentSport?.maxSets || 3;
+
+  // Timer interval for live matches
+  useEffect(() => {
+    const timer = setInterval(() => {
+      matches.forEach((m) => {
+        if (m.status === 'LIVE' && m.timer?.running) {
+          const updated: Match = {
+            ...m,
+            timer: {
+              ...m.timer,
+              elapsedSeconds: m.timer.elapsedSeconds + 1,
+            },
+          };
+          onUpdateMatch(updated);
+        }
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [matches, onUpdateMatch]);
+
+  const filteredMatches = matches.filter((m) => {
+    const matchGrp = filterGroup === 'ALL' || m.stage === filterGroup;
+    const matchStat = filterStatus === 'ALL' || m.status === filterStatus;
+    return matchGrp && matchStat;
+  });
+
+  const activeMatch = matches.find((m) => m.id === activeScoringMatchId) || matches[0];
+
+  const handleScoreChange = (
+    matchId: string,
+    setNum: number | 'pen',
+    teamSide: 'home' | 'away',
+    delta: number
+  ) => {
+    const m = matches.find((item) => item.id === matchId);
+    if (!m) return;
+
+    const newScores = { ...m.scores };
+    if (setNum === 'pen') {
+      const current = newScores.pen[teamSide];
+      newScores.pen[teamSide] = Math.max(0, current + delta);
+      newScores.pen.played = true;
+    } else {
+      const setKey = `set${setNum}` as keyof typeof newScores;
+      const current = (newScores[setKey] as { home: number; away: number })[teamSide];
+      const nextVal = Math.max(0, current + delta);
+      (newScores[setKey] as { home: number; away: number })[teamSide] = nextVal;
+    }
+
+    if (delta > 0) {
+      playScoreChime();
+      const scoringTeam = teamSide === 'home' ? m.home.name : m.away.name;
+      sendSmartNotification(
+        `ĐIỂM SỐ MỚI: ${scoringTeam}`,
+        `${scoringTeam} vừa ghi điểm trong ${m.code}!`,
+        'score'
+      );
+    }
+
+    const updated: Match = {
+      ...m,
+      scores: newScores,
+    };
+    onUpdateMatch(updated);
+  };
+
+  const handleToggleTimer = (matchId: string) => {
+    const m = matches.find((item) => item.id === matchId);
+    if (!m) return;
+
+    const nextRunning = !m.timer.running;
+    const nextStatus = nextRunning ? 'LIVE' : m.status;
+
+    if (nextRunning) {
+      playRefereeWhistle();
+      sendSmartNotification(
+        `BẮT ĐẦU TRẬN ĐẤU: ${m.code}`,
+        `${m.home.name} vs ${m.away.name} đang tranh tài trên ${m.pitch}!`,
+        'match_start'
+      );
+    }
+
+    const updated: Match = {
+      ...m,
+      status: nextStatus,
+      timer: {
+        ...m.timer,
+        running: nextRunning,
+      },
+    };
+    onUpdateMatch(updated);
+  };
+
+  const handleFinishMatch = (matchId: string) => {
+    const m = matches.find((item) => item.id === matchId);
+    if (!m) return;
+
+    playRefereeWhistle();
+    const updated: Match = {
+      ...m,
+      status: 'FINISHED',
+      timer: {
+        ...m.timer,
+        running: false,
+      },
+    };
+    onUpdateMatch(updated);
+    sendSmartNotification(
+      `KẾT THÚC TRẬN ĐẤU: ${m.code}`,
+      `Trận đấu giữa ${m.home.name} và ${m.away.name} đã kết thúc!`,
+      'score'
+    );
+  };
+
+  const [isAutoScheduleModalOpen, setIsAutoScheduleModalOpen] = useState(false);
+  const [schedDate, setSchedDate] = useState(new Date().toISOString().slice(0, 10));
+  const [schedTime, setSchedTime] = useState('08:00');
+  const [schedInterval, setSchedInterval] = useState(45);
+  const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
+
+  const handleAddNewManualMatch = () => {
+    const homeTeam: Team = teams[0] || {
+      id: 'T_' + Date.now() + '_1',
+      name: 'Đội 1',
+      group: config.customGroups[0] || 'Khối 10',
+      color: '#0284c7',
+    };
+    const awayTeam: Team = teams[1] || {
+      id: 'T_' + Date.now() + '_2',
+      name: 'Đội 2',
+      group: config.customGroups[0] || 'Khối 10',
+      color: '#059669',
+    };
+
+    const newM: Match = {
+      id: 'M_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      code: `Trận ${(matches.length + 1).toString().padStart(2, '0')}`,
+      stage: config.customGroups[0] || 'Khối 10',
+      pitch: 'Sân 1',
+      date: new Date().toISOString().slice(0, 10),
+      time: '08:30',
+      home: homeTeam,
+      away: awayTeam,
+      status: 'UPCOMING',
+      timer: { running: false, elapsedSeconds: 0, currentSet: 1 },
+      scores: {
+        set1: { home: 0, away: 0 },
+        set2: { home: 0, away: 0 },
+        set3: { home: 0, away: 0 },
+        set4: { home: 0, away: 0 },
+        set5: { home: 0, away: 0 },
+        pen: { home: 0, away: 0, played: false },
+      },
+      events: [],
+      refereeName: config.referee,
+      secretaryName: config.secretary,
+      notes: 'Trận đấu tạo thủ công',
+    };
+    onAddMatch(newM);
+    onOpenEditMatch(newM);
+  };
+
+  const formatTimer = (totalSec: number) => {
+    const mins = Math.floor(totalSec / 60);
+    const secs = totalSec % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Top Header & Scheduling Actions */}
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+            <Calendar className="w-5 h-5 text-sky-600" />
+            Lịch Thi Đấu & Cập Nhật Tỉ Số Trực Tiếp
+          </h2>
+          <p className="text-xs text-slate-400">
+            Môn thi đấu hiện tại: <strong className="text-sky-600 dark:text-sky-400">{currentSport?.name || 'Bóng chuyền'}</strong> ({maxSets} set)
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          {isAdmin && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  handleAddNewManualMatch();
+                  setScheduleNotice('Đã tạo một trận đấu mới! Vui lòng kiểm tra và lưu thông tin chi tiết trên biểu mẫu.');
+                }}
+                className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              >
+                <Plus className="w-3.5 h-3.5 text-sky-600" />
+                <span>Thêm Trận Thủ Công</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsAutoScheduleModalOpen(true)}
+                className="px-4 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Wand2 className="w-4 h-4" />
+                <span>Tạo Lịch Tự Động</span>
+              </button>
+            </>
+          )}
+
+          {canScore && (
+            <button
+              type="button"
+              onClick={playRefereeWhistle}
+              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+              title="Thổi còi trọng tài"
+            >
+              <Volume2 className="w-4 h-4 text-amber-500" />
+              <span>Thổi Còi</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Schedule Feedback Banner */}
+      {scheduleNotice && (
+        <div className="p-4 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-2xl flex items-center justify-between gap-3 text-emerald-800 dark:text-emerald-200 text-xs shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span className="font-semibold">{scheduleNotice}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setScheduleNotice(null)}
+            className="p-1 text-emerald-600 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-200 rounded-lg"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* LIVE SCORING CONSOLE (Interactive scoreboard on court) */}
+      {activeMatch && canScore && (
+        <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white p-6 sm:p-8 rounded-3xl border border-sky-800/60 shadow-xl space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/10">
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 bg-sky-500 text-slate-950 text-xs font-black rounded-lg">
+                {activeMatch.code}
+              </span>
+              <span className="text-xs text-slate-300 font-semibold">{activeMatch.stage} · {activeMatch.pitch}</span>
+              {activeMatch.status === 'LIVE' && (
+                <span className="flex items-center gap-1.5 text-xs font-bold text-rose-400">
+                  <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                  ĐANG THI ĐẤU
+                </span>
+              )}
+            </div>
+
+            {/* Match Clock Controls */}
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-950/80 rounded-xl border border-white/15">
+                <Clock className="w-3.5 h-3.5 text-sky-400" />
+                <span className="font-mono text-sm font-bold text-amber-300">
+                  {formatTimer(activeMatch.timer?.elapsedSeconds || 0)}
+                </span>
+              </div>
+
+              <button
+                onClick={() => handleToggleTimer(activeMatch.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition ${
+                  activeMatch.timer?.running
+                    ? 'bg-amber-500 hover:bg-amber-600 text-slate-950'
+                    : 'bg-emerald-600 hover:bg-emerald-500 text-white'
+                }`}
+              >
+                {activeMatch.timer?.running ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                <span>{activeMatch.timer?.running ? 'Tạm Dừng' : 'Bấm Giờ'}</span>
+              </button>
+
+              <button
+                onClick={() => handleFinishMatch(activeMatch.id)}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1"
+              >
+                <span>Hoàn Thành Trận</span>
+              </button>
+
+              {isAdmin && (
+                <button
+                  onClick={() => onOpenEditMatch(activeMatch)}
+                  className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition flex items-center gap-1"
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                  <span>Sửa Lịch</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Touch Score Controller */}
+          <div className="grid grid-cols-1 md:grid-cols-7 items-center gap-6">
+            {/* Team Home */}
+            <div className="md:col-span-3 text-center space-y-3">
+              <div className="text-lg sm:text-xl font-extrabold text-white truncate">
+                {activeMatch.home.name}
+              </div>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  onClick={() => handleScoreChange(activeMatch.id, isFootball ? 1 : activeMatch.timer?.currentSet || 1, 'home', -1)}
+                  className="w-11 h-11 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-white flex items-center justify-center transition border border-white/10"
+                >
+                  <Minus className="w-5 h-5" />
+                </button>
+                <div className="w-20 py-2 bg-slate-950/90 rounded-2xl border border-sky-400/40 text-amber-300 font-mono text-3xl font-black">
+                  {isFootball
+                    ? activeMatch.scores.set1.home
+                    : (activeMatch.scores[`set${activeMatch.timer?.currentSet || 1}` as keyof typeof activeMatch.scores] as { home: number; away: number }).home}
+                </div>
+                <button
+                  onClick={() => handleScoreChange(activeMatch.id, isFootball ? 1 : activeMatch.timer?.currentSet || 1, 'home', 1)}
+                  className="w-11 h-11 rounded-2xl bg-sky-500 hover:bg-sky-400 active:scale-95 text-slate-950 flex items-center justify-center transition font-bold shadow-lg shadow-sky-500/20"
+                >
+                  <Plus className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+
+            {/* Center Divider / Set Selector */}
+            <div className="md:col-span-1 text-center space-y-2">
+              <span className="text-xs uppercase font-extrabold tracking-wider text-slate-400">
+                {isFootball ? 'Bàn Thắng' : `Set ${activeMatch.timer?.currentSet || 1}`}
+              </span>
+              {!isFootball && (
+                <div className="flex justify-center gap-1">
+                  {[1, 2, 3, 4, 5].slice(0, maxSets).map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => {
+                        const updated: Match = {
+                          ...activeMatch,
+                          timer: { ...activeMatch.timer, currentSet: s },
+                        };
+                        onUpdateMatch(updated);
+                      }}
+                      className={`w-7 h-7 rounded-lg text-xs font-bold transition ${
+                        (activeMatch.timer?.currentSet || 1) === s
+                          ? 'bg-sky-500 text-slate-950 font-black'
+                          : 'bg-white/10 text-slate-300 hover:bg-white/20'
+                      }`}
+                    >
+                      S{s}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Team Away */}
+            <div className="md:col-span-3 text-center space-y-3">
+              <div className="text-lg sm:text-xl font-extrabold text-white truncate">
+                {activeMatch.away.name}
+              </div>
+              <div className="flex items-center justify-center gap-2">
+                <button
+                  onClick={() => handleScoreChange(activeMatch.id, isFootball ? 1 : activeMatch.timer?.currentSet || 1, 'away', -1)}
+                  className="w-11 h-11 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-white flex items-center justify-center transition border border-white/10"
+                >
+                  <Minus className="w-5 h-5" />
+                </button>
+                <div className="w-20 py-2 bg-slate-950/90 rounded-2xl border border-sky-400/40 text-amber-300 font-mono text-3xl font-black">
+                  {isFootball
+                    ? activeMatch.scores.set1.away
+                    : (activeMatch.scores[`set${activeMatch.timer?.currentSet || 1}` as keyof typeof activeMatch.scores] as { home: number; away: number }).away}
+                </div>
+                <button
+                  onClick={() => handleScoreChange(activeMatch.id, isFootball ? 1 : activeMatch.timer?.currentSet || 1, 'away', 1)}
+                  className="w-11 h-11 rounded-2xl bg-sky-500 hover:bg-sky-400 active:scale-95 text-slate-950 flex items-center justify-center transition font-bold shadow-lg shadow-sky-500/20"
+                >
+                  <Plus className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Matches List Filter */}
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-slate-500 font-medium">Bảng/Khối:</span>
+          <select
+            value={filterGroup}
+            onChange={(e) => setFilterGroup(e.target.value)}
+            className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs"
+          >
+            <option value="ALL">Tất cả bảng đấu</option>
+            {config.customGroups.map((g) => (
+              <option key={g} value={g}>{g}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-slate-500 font-medium">Trạng thái:</span>
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs"
+          >
+            <option value="ALL">Tất cả trạng thái</option>
+            <option value="LIVE">Đang thi đấu</option>
+            <option value="UPCOMING">Sắp diễn ra</option>
+            <option value="FINISHED">Đã kết thúc</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Matches Cards */}
+      <div className="space-y-4">
+        {filteredMatches.length === 0 ? (
+          <div className="bg-white dark:bg-slate-900 p-8 text-center rounded-3xl border border-slate-200/80 dark:border-slate-800 text-slate-400 text-xs">
+            Chưa có lịch thi đấu nào cho tiêu chí đã chọn. Nhấn "Tạo Lịch Tự Động" hoặc "Thêm Trận Thủ Công".
+          </div>
+        ) : (
+          filteredMatches.map((m) => {
+            let scoreSummary = '';
+            let isHomeWin = false, isAwayWin = false;
+
+            if (isFootball) {
+              scoreSummary = `${m.scores.set1.home} : ${m.scores.set1.away}`;
+              if (m.scores.pen.played) {
+                scoreSummary += ` (Pen: ${m.scores.pen.home}-${m.scores.pen.away})`;
+              }
+              if (m.scores.set1.home > m.scores.set1.away) isHomeWin = true;
+              else if (m.scores.set1.away > m.scores.set1.home) isAwayWin = true;
+            } else {
+              let hSets = 0, aSets = 0;
+              for (let s = 1; s <= maxSets; s++) {
+                const sc = m.scores[`set${s}` as keyof typeof m.scores] as { home: number; away: number };
+                if (sc.home > sc.away) hSets++;
+                else if (sc.away > sc.home) aSets++;
+              }
+              scoreSummary = `${hSets} : ${aSets}`;
+              if (hSets > aSets) isHomeWin = true;
+              else if (aSets > hSets) isAwayWin = true;
+            }
+
+            return (
+              <div
+                key={m.id}
+                className={`bg-white dark:bg-slate-900 p-5 rounded-3xl border transition shadow-2xs space-y-4 ${
+                  activeScoringMatchId === m.id
+                    ? 'border-sky-500 ring-2 ring-sky-500/20'
+                    : 'border-slate-200/80 dark:border-slate-800'
+                }`}
+              >
+                {/* Match Header */}
+                <div className="flex flex-wrap items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-1 bg-sky-600 text-white font-bold rounded-lg text-xs">
+                      {m.code}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      {m.stage} · {m.pitch}
+                    </span>
+                    <span className="text-xs text-slate-400">· {m.date || ''} {m.time}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {/* Edit Match Schedule Button */}
+                    {(isAdmin || canScore) && (
+                      <button
+                        onClick={() => onOpenEditMatch(m)}
+                        className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+                        title="Chỉnh sửa lịch đấu & thông tin trận"
+                      >
+                        <Edit className="w-3.5 h-3.5 text-sky-600" />
+                        <span>Sửa Lịch</span>
+                      </button>
+                    )}
+
+                    {canScore && (
+                      <button
+                        onClick={() => setActiveScoringMatchId(m.id)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                          activeScoringMatchId === m.id
+                            ? 'bg-sky-600 text-white'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200'
+                        }`}
+                      >
+                        <Play className="w-3 h-3" />
+                        <span>Bàn Tỉ Số</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => onOpenMinutes(m)}
+                      className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-sky-600" />
+                      <span>Biên Bản</span>
+                    </button>
+
+                    <button
+                      onClick={() => onDeleteMatch(m.id)}
+                      className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl transition"
+                      title="Xóa trận đấu này"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Scoreboard Row */}
+                <div className="grid grid-cols-7 items-center">
+                  <div className={`col-span-3 text-right pr-4 font-bold text-sm sm:text-base ${isHomeWin ? 'text-sky-600 dark:text-sky-400 font-extrabold' : 'text-slate-800 dark:text-slate-200'}`}>
+                    {m.home.name}
+                  </div>
+                  <div className="col-span-1 text-center py-2 px-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Tỉ số</span>
+                    <span className="font-mono text-lg font-black text-slate-900 dark:text-white">
+                      {scoreSummary}
+                    </span>
+                  </div>
+                  <div className={`col-span-3 text-left pl-4 font-bold text-sm sm:text-base ${isAwayWin ? 'text-sky-600 dark:text-sky-400 font-extrabold' : 'text-slate-800 dark:text-slate-200'}`}>
+                    {m.away.name}
+                  </div>
+                </div>
+
+                {/* Set details summary */}
+                {!isFootball && (
+                  <div className="flex flex-wrap items-center justify-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500">
+                    {[1, 2, 3, 4, 5].slice(0, maxSets).map((s) => {
+                      const sc = m.scores[`set${s}` as keyof typeof m.scores] as { home: number; away: number };
+                      return (
+                        <span key={s} className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800/80 font-mono">
+                          Set {s}: {sc.home} - {sc.away}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+
+      {/* Auto Schedule Settings Modal */}
+      {isAutoScheduleModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 overflow-y-auto">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-5 my-6">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-xs">
+                  <Wand2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base text-slate-900 dark:text-white">
+                    Tạo Lịch Thi Đấu Tự Động
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Xếp cặp đấu vòng tròn theo bảng/khối và đồng bộ thời gian
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAutoScheduleModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-2 rounded-xl"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {teams.length < 2 ? (
+              <div className="space-y-4">
+                <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900 rounded-2xl space-y-2">
+                  <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-bold text-xs">
+                    <Sparkles className="w-4 h-4 shrink-0" />
+                    <span>Chưa có đủ danh sách đội bóng (Cần ít nhất 2 đội)</span>
+                  </div>
+                  <p className="text-xs text-amber-700 dark:text-amber-400 leading-relaxed">
+                    Bạn vừa xoá các danh sách mẫu hoặc chưa nhập đội thi đấu. Bạn có thể bấm nút bên dưới để hệ thống tự động khởi tạo ngay 6 đội lớp đại diện (10A1, 10A2, 11A1, 11A2, 12A1, 12A2) và tạo lịch thi đấu tự động ngay lập tức!
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                      Ngày Bắt Đầu
+                    </label>
+                    <input
+                      type="date"
+                      value={schedDate}
+                      onChange={(e) => setSchedDate(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                      Giờ Bắt Đầu
+                    </label>
+                    <input
+                      type="time"
+                      value={schedTime}
+                      onChange={(e) => setSchedTime(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="pt-2 flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const hour = parseInt(schedTime.split(':')[0], 10) || 8;
+                      onGenerateSchedule(undefined, schedDate, hour, schedInterval);
+                      setIsAutoScheduleModalOpen(false);
+                      setScheduleNotice('Đã khởi tạo 6 đội lớp đại diện và xếp lịch thi đấu vòng tròn thành công!');
+                    }}
+                    className="w-full py-3 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 shadow-md cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    <span>⚡ Khởi Tạo 6 Lớp & Xếp Lịch Tự Động Ngay</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsAutoScheduleModalOpen(false)}
+                    className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold transition"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="p-3 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-900 rounded-2xl flex items-center justify-between text-xs">
+                  <span className="text-slate-600 dark:text-slate-300">
+                    Số đội tham gia thi đấu: <strong className="text-sky-600 dark:text-sky-400 font-bold">{teams.length} đội</strong>
+                  </span>
+                  <span className="text-slate-400">
+                    {config.customGroups.length} bảng/khối
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800">
+                  {teams.map((t) => (
+                    <span
+                      key={t.id}
+                      className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] font-semibold text-slate-700 dark:text-slate-300 rounded-lg"
+                    >
+                      {t.name} ({t.group})
+                    </span>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                      Ngày Bắt Đầu
+                    </label>
+                    <input
+                      type="date"
+                      value={schedDate}
+                      onChange={(e) => setSchedDate(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                      Giờ Bắt Đầu
+                    </label>
+                    <input
+                      type="time"
+                      value={schedTime}
+                      onChange={(e) => setSchedTime(e.target.value)}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                      Giãn Cách (Phút)
+                    </label>
+                    <select
+                      value={schedInterval}
+                      onChange={(e) => setSchedInterval(Number(e.target.value))}
+                      className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
+                    >
+                      <option value={30}>30 phút/trận</option>
+                      <option value={45}>45 phút/trận</option>
+                      <option value={60}>60 phút/trận</option>
+                      <option value={90}>90 phút/trận</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="pt-3 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setIsAutoScheduleModalOpen(false)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
+                  >
+                    Hủy Bỏ
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const hour = parseInt(schedTime.split(':')[0], 10) || 8;
+                      onGenerateSchedule(undefined, schedDate, hour, schedInterval);
+                      setIsAutoScheduleModalOpen(false);
+                      setScheduleNotice(`Đã tạo lịch thi đấu tự động cho ${teams.length} đội thành công!`);
+                    }}
+                    className="px-5 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  >
+                    <Wand2 className="w-4 h-4" />
+                    <span>Xếp Lịch Ngay ({teams.length} Đội)</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};

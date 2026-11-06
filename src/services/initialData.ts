@@ -1,0 +1,256 @@
+import {
+  Athlete,
+  Match,
+  RankingCriterionConfig,
+  Sport,
+  Team,
+  TournamentConfig,
+  NotificationItem,
+  UserAccount,
+  UserProfile,
+} from '../types';
+
+export const DEFAULT_RANKING_CRITERIA: RankingCriterionConfig[] = [
+  { id: 'points', label: '1. Tổng điểm số đạt được (Points)', enabled: true, order: 1 },
+  { id: 'head_to_head', label: '2. Thành tích đối đầu trực tiếp (Head-to-Head)', enabled: true, order: 2 },
+  { id: 'set_difference', label: '3. Hiệu số set thắng / thua (Set Difference)', enabled: true, order: 3 },
+  { id: 'sets_won', label: '4. Tổng số set thắng (Sets Won)', enabled: true, order: 4 },
+  { id: 'point_difference', label: '5. Hiệu số điểm trong các set đấu (Point Difference)', enabled: true, order: 5 },
+  { id: 'points_scored', label: '6. Tổng điểm ghi được trong set đấu (Total Points Scored)', enabled: true, order: 6 },
+  { id: 'sets_lost', label: '7. Số set thua (ít hơn xếp trên)', enabled: false, order: 7 },
+];
+
+export const INITIAL_SPORTS: Sport[] = [
+  {
+    id: 'volleyball',
+    name: 'Bóng chuyền',
+    code: 'VOLLEYBALL',
+    maxSets: 3,
+    pointScheme: 'standard',
+    ptsWin: 3,
+    ptsDraw: 0,
+    ptsLoss: 0,
+    icon: 'volleyball',
+    description: 'Đấu 3 set (thắng 2) hoặc 5 set (thắng 3). Thắng cách biệt +3đ, suýt soát +2đ/1đ.',
+  },
+  {
+    id: 'football',
+    name: 'Bóng đá',
+    code: 'FOOTBALL',
+    maxSets: 1,
+    pointScheme: 'standard',
+    ptsWin: 3,
+    ptsDraw: 1,
+    ptsLoss: 0,
+    icon: 'football',
+    description: '1 hiệp chính, hòa có thể sút luân lưu. Thắng hiệp chính +3đ, hòa 1đ, thắng Pen 1đ.',
+  },
+  {
+    id: 'badminton',
+    name: 'Cầu lông',
+    code: 'BADMINTON',
+    maxSets: 3,
+    pointScheme: 'standard',
+    ptsWin: 3,
+    ptsDraw: 0,
+    ptsLoss: 0,
+    icon: 'badminton',
+    description: 'Thi đấu 3 ván 21 điểm, thắng 2 ván.',
+  },
+  {
+    id: 'tabletennis',
+    name: 'Bóng bàn',
+    code: 'TABLETENNIS',
+    maxSets: 3,
+    pointScheme: 'standard',
+    ptsWin: 3,
+    ptsDraw: 0,
+    ptsLoss: 0,
+    icon: 'tabletennis',
+    description: 'Thi đấu 3 ván 11 điểm, thắng 2 ván.',
+  },
+];
+
+export const DEFAULT_GUEST_USER: UserProfile = {
+  role: 'viewer',
+  username: '',
+  displayName: 'Khách xem',
+  title: 'Chưa đăng nhập',
+};
+
+export const DEFAULT_CONFIG: TournamentConfig = {
+  schoolName: 'THPT HUỲNH TẤN PHÁT',
+  deptName: 'TỔ VẬT LÝ - GDTC',
+  tournamentName: 'GIẢI THỂ THAO HỌC SINH 2026',
+  organizer: 'admin',
+  referee: 'Thầy Trần Quốc Bảo (Trọng tài chính)',
+  secretary: 'Cô Lê Thị Mai (Thư ký bàn)',
+  activeSportId: 'volleyball',
+  customGroups: ['Khối 10', 'Khối 11', 'Khối 12'],
+  rankingCriteria: DEFAULT_RANKING_CRITERIA,
+  themeColor: 'blue',
+  e2eeEnabled: true,
+  e2eePassphraseHash: 'default_hash_sport2026',
+};
+
+export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
+  {
+    id: 'U_ADMIN',
+    username: 'admin',
+    password: 'admin230876',
+    displayName: 'admin',
+    role: 'admin',
+    title: 'Ban Tổ Chức (Toàn quyền quản trị)',
+    email: 'admin@huynhtanphat.edu.vn',
+    securityQuestion: 'Trường THPT bạn công tác là gì?',
+    securityAnswer: 'Huỳnh Tấn Phát',
+    createdAt: '2026-10-01',
+  },
+  {
+    id: 'U_REF_1',
+    username: 'referee',
+    password: 'referee@2026',
+    displayName: 'Trần Quốc Bảo',
+    role: 'referee',
+    title: 'Trọng tài chính điều hành',
+    email: 'trongtai.bao@huynhtanphat.edu.vn',
+    securityQuestion: 'Bộ môn thể thao sở trường của bạn là gì?',
+    securityAnswer: 'Bóng chuyền',
+    createdAt: '2026-10-02',
+  },
+  {
+    id: 'U_SEC_1',
+    username: 'thuky1',
+    password: 'thuky@2026',
+    displayName: 'Lê Thị Mai',
+    role: 'secretary',
+    title: 'Thư ký bàn ghi nhận tỉ số',
+    email: 'thuky.mai@huynhtanphat.edu.vn',
+    securityQuestion: 'Năm thành lập trường là năm nào?',
+    securityAnswer: '2003',
+    createdAt: '2026-10-03',
+  },
+  {
+    id: 'U_CAPT_1',
+    username: 'captain10a1',
+    password: 'lop10a1@2026',
+    displayName: 'Đội Trưởng Lớp 10A1',
+    role: 'athlete',
+    title: 'Đại diện lớp 10A1',
+    email: 'lop10a1@huynhtanphat.edu.vn',
+    securityQuestion: 'Tên giáo viên chủ nhiệm lớp?',
+    securityAnswer: 'Cô Hương',
+    createdAt: '2026-10-04',
+  },
+];
+
+export const INITIAL_TEAMS: Team[] = [];
+
+export const INITIAL_ATHLETES: Athlete[] = [];
+
+export const INITIAL_MATCHES: Match[] = [];
+
+export const INITIAL_NOTIFICATIONS: NotificationItem[] = [
+  {
+    id: 'N_INIT_1',
+    timestamp: '08:00',
+    title: 'Hệ Thống Sẵn Sàng Tiếp Nhận Dữ Liệu',
+    message: 'Hệ thống đã sẵn sàng. Ban tổ chức vui lòng nhập danh sách đội và vận động viên để bắt đầu xếp lịch thi đấu.',
+    type: 'system',
+    read: false,
+  },
+];
+
+const LOCAL_STORAGE_KEY = 'SPORTS_TOURNAMENT_APP_V4_REAL_DATA';
+
+// IDs of any former mock data to purge permanently
+const LEGACY_MOCK_TEAM_IDS = new Set(['T_10A1', 'T_10A2', 'T_10A3', 'T_11A1', 'T_11A2', 'T_12A1']);
+const LEGACY_MOCK_ATHLETE_IDS = new Set(['A_101', 'A_102', 'A_103', 'A_104', 'A_105']);
+const LEGACY_MOCK_MATCH_IDS = new Set(['M_1', 'M_2', 'M_3']);
+
+export function loadTournamentState() {
+  if (typeof window === 'undefined') {
+    return {
+      config: DEFAULT_CONFIG,
+      sports: INITIAL_SPORTS,
+      teams: INITIAL_TEAMS,
+      athletes: INITIAL_ATHLETES,
+      matches: INITIAL_MATCHES,
+      users: INITIAL_USER_ACCOUNTS,
+      notifications: INITIAL_NOTIFICATIONS,
+    };
+  }
+
+  try {
+    // Also remove old version keys if they existed with mock data
+    try {
+      localStorage.removeItem('SPORTS_TOURNAMENT_APP_V1');
+      localStorage.removeItem('SPORTS_TOURNAMENT_APP_V2');
+      localStorage.removeItem('SPORTS_TOURNAMENT_APP_V3');
+    } catch {
+      // ignore
+    }
+
+    const raw = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const rawTeams: Team[] = Array.isArray(parsed.teams) ? parsed.teams : [];
+      const cleanTeams = rawTeams.filter((t) => !LEGACY_MOCK_TEAM_IDS.has(t.id));
+
+      const rawAthletes: Athlete[] = Array.isArray(parsed.athletes) ? parsed.athletes : [];
+      const cleanAthletes = rawAthletes.filter((a) => !LEGACY_MOCK_ATHLETE_IDS.has(a.id));
+
+      const rawMatches: Match[] = Array.isArray(parsed.matches) ? parsed.matches : [];
+      const cleanMatches = rawMatches.filter((m) => !LEGACY_MOCK_MATCH_IDS.has(m.id));
+
+      return {
+        config: {
+          ...DEFAULT_CONFIG,
+          ...(parsed.config || {}),
+          rankingCriteria: Array.isArray(parsed.config?.rankingCriteria)
+            ? parsed.config.rankingCriteria
+            : DEFAULT_RANKING_CRITERIA,
+        },
+        sports: Array.isArray(parsed.sports) && parsed.sports.length > 0 ? parsed.sports : INITIAL_SPORTS,
+        teams: cleanTeams,
+        athletes: cleanAthletes,
+        matches: cleanMatches,
+        users: Array.isArray(parsed.users) && parsed.users.length > 0
+          ? parsed.users.map((u: UserAccount) =>
+              u.username === 'admin' ? { ...u, displayName: 'admin' } : u
+            )
+          : INITIAL_USER_ACCOUNTS,
+        notifications: Array.isArray(parsed.notifications) ? parsed.notifications : INITIAL_NOTIFICATIONS,
+      };
+    }
+  } catch (e) {
+    console.error('Error loading stored data:', e);
+  }
+
+  return {
+    config: DEFAULT_CONFIG,
+    sports: INITIAL_SPORTS,
+    teams: INITIAL_TEAMS,
+    athletes: INITIAL_ATHLETES,
+    matches: INITIAL_MATCHES,
+    users: INITIAL_USER_ACCOUNTS,
+    notifications: INITIAL_NOTIFICATIONS,
+  };
+}
+
+export function saveTournamentState(state: {
+  config: TournamentConfig;
+  sports: Sport[];
+  teams: Team[];
+  athletes: Athlete[];
+  matches: Match[];
+  users: UserAccount[];
+  notifications: NotificationItem[];
+}) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
+  } catch (e) {
+    console.error('Error saving tournament state:', e);
+  }
+}

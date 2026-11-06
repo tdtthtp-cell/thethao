@@ -1,0 +1,44 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Config documents
+    match /config/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Sports documents
+    match /sports/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Teams collection
+    match /teams/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Athletes collection
+    match /athletes/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Matches and scores collection (realtime live scoring across devices)
+    match /matches/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Notifications
+    match /notifications/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Connection test document
+    match /test/{document=**} {
+      allow read, write: if true;
+    }
+
+    // Default fallback
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
