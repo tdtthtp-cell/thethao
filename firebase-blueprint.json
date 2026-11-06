@@ -104,6 +104,22 @@
         "read": { "type": "boolean" }
       },
       "required": ["id", "title", "message"]
+    },
+    "UserAccount": {
+      "title": "UserAccount",
+      "description": "Tài khoản người dùng và phân quyền ban tổ chức",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "displayName": { "type": "string" },
+        "role": { "type": "string" },
+        "title": { "type": "string" },
+        "email": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "username", "role", "displayName"]
     }
   },
   "firestore": {
@@ -130,6 +146,10 @@
     "/notifications/{notificationId}": {
       "schema": { "$ref": "#/entities/NotificationItem" },
       "description": "Thông báo thời gian thực gửi tới tất cả thiết bị"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserAccount" },
+      "description": "Tài khoản người dùng đồng bộ hóa trên cơ sở dữ liệu Firestore"
     }
   }
 }

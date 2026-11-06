@@ -106,42 +106,6 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     securityAnswer: 'Huỳnh Tấn Phát',
     createdAt: '2026-10-01',
   },
-  {
-    id: 'U_REF_1',
-    username: 'referee',
-    password: 'referee@2026',
-    displayName: 'Trần Quốc Bảo',
-    role: 'referee',
-    title: 'Trọng tài chính điều hành',
-    email: 'trongtai.bao@huynhtanphat.edu.vn',
-    securityQuestion: 'Bộ môn thể thao sở trường của bạn là gì?',
-    securityAnswer: 'Bóng chuyền',
-    createdAt: '2026-10-02',
-  },
-  {
-    id: 'U_SEC_1',
-    username: 'thuky1',
-    password: 'thuky@2026',
-    displayName: 'Lê Thị Mai',
-    role: 'secretary',
-    title: 'Thư ký bàn ghi nhận tỉ số',
-    email: 'thuky.mai@huynhtanphat.edu.vn',
-    securityQuestion: 'Năm thành lập trường là năm nào?',
-    securityAnswer: '2003',
-    createdAt: '2026-10-03',
-  },
-  {
-    id: 'U_CAPT_1',
-    username: 'captain10a1',
-    password: 'lop10a1@2026',
-    displayName: 'Đội Trưởng Lớp 10A1',
-    role: 'athlete',
-    title: 'Đại diện lớp 10A1',
-    email: 'lop10a1@huynhtanphat.edu.vn',
-    securityQuestion: 'Tên giáo viên chủ nhiệm lớp?',
-    securityAnswer: 'Cô Hương',
-    createdAt: '2026-10-04',
-  },
 ];
 
 export const INITIAL_TEAMS: Team[] = [];
@@ -166,7 +130,8 @@ const LOCAL_STORAGE_KEY = 'SPORTS_TOURNAMENT_APP_V4_REAL_DATA';
 // IDs of any former mock data to purge permanently
 const LEGACY_MOCK_TEAM_IDS = new Set(['T_10A1', 'T_10A2', 'T_10A3', 'T_11A1', 'T_11A2', 'T_12A1']);
 const LEGACY_MOCK_ATHLETE_IDS = new Set(['A_101', 'A_102', 'A_103', 'A_104', 'A_105']);
-const LEGACY_MOCK_MATCH_IDS = new Set(['M_1', 'M_2', 'M_3']);
+const LEGACY_MOCK_MATCH_IDS = new Set(['M_101', 'M_102', 'M_103', 'M_104']);
+const LEGACY_MOCK_USER_IDS = new Set(['U_REF_1', 'U_SEC_1', 'U_CAPT_1']);
 
 export function loadTournamentState() {
   if (typeof window === 'undefined') {
@@ -203,6 +168,19 @@ export function loadTournamentState() {
       const rawMatches: Match[] = Array.isArray(parsed.matches) ? parsed.matches : [];
       const cleanMatches = rawMatches.filter((m) => !LEGACY_MOCK_MATCH_IDS.has(m.id));
 
+      const rawUsers: UserAccount[] = Array.isArray(parsed.users) ? parsed.users : [];
+      const cleanUsers = rawUsers
+        .filter(
+          (u) =>
+            !LEGACY_MOCK_USER_IDS.has(u.id) &&
+            u.username !== 'referee' &&
+            u.username !== 'thuky1' &&
+            u.username !== 'captain10a1'
+        )
+        .map((u: UserAccount) =>
+          u.username === 'admin' ? { ...u, displayName: 'admin' } : u
+        );
+
       return {
         config: {
           ...DEFAULT_CONFIG,
@@ -215,11 +193,7 @@ export function loadTournamentState() {
         teams: cleanTeams,
         athletes: cleanAthletes,
         matches: cleanMatches,
-        users: Array.isArray(parsed.users) && parsed.users.length > 0
-          ? parsed.users.map((u: UserAccount) =>
-              u.username === 'admin' ? { ...u, displayName: 'admin' } : u
-            )
-          : INITIAL_USER_ACCOUNTS,
+        users: cleanUsers.length > 0 ? cleanUsers : INITIAL_USER_ACCOUNTS,
         notifications: Array.isArray(parsed.notifications) ? parsed.notifications : INITIAL_NOTIFICATIONS,
       };
     }

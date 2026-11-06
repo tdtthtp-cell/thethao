@@ -31,6 +31,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Users collection (Admin and tournament officials)
+    match /users/{document=**} {
+      allow read, write: if true;
+    }
+
     // Connection test document
     match /test/{document=**} {
       allow read, write: if true;

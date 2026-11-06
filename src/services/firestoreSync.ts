@@ -18,6 +18,7 @@ import {
   Sport,
   Team,
   TournamentConfig,
+  UserAccount,
 } from '../types';
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
@@ -46,6 +47,20 @@ const TEAMS_COL = 'teams';
 const ATHLETES_COL = 'athletes';
 const MATCHES_COL = 'matches';
 const NOTIFICATIONS_COL = 'notifications';
+const USERS_COL = 'users';
+
+const DEFAULT_ADMIN_USER: UserAccount = {
+  id: 'U_ADMIN',
+  username: 'admin',
+  password: 'admin230876',
+  displayName: 'admin',
+  role: 'admin',
+  title: 'Ban Tổ Chức (Toàn quyền quản trị)',
+  email: 'admin@huynhtanphat.edu.vn',
+  securityQuestion: 'Trường THPT bạn công tác là gì?',
+  securityAnswer: 'Huỳnh Tấn Phát',
+  createdAt: '2026-10-01',
+};
 
 // 1. Subscribe to Real-Time Firestore Sync
 export function subscribeToFirestore(callbacks: {
@@ -55,6 +70,7 @@ export function subscribeToFirestore(callbacks: {
   onAthletesChange?: (athletes: Athlete[]) => void;
   onMatchesChange?: (matches: Match[]) => void;
   onNotificationsChange?: (notifications: NotificationItem[]) => void;
+  onUsersChange?: (users: UserAccount[]) => void;
   onSyncStatusChange?: (status: 'synced' | 'connecting' | 'error') => void;
 }): () => void {
   const unsubs: Unsubscribe[] = [];
@@ -142,6 +158,46 @@ export function subscribeToFirestore(callbacks: {
       (err) => console.warn('Firestore notifications listener warning:', err)
     );
     unsubs.push(unsubNotifs);
+
+    // Users listener (Synchronizes user accounts across devices)
+    const unsubUsers = onSnapshot(
+      collection(db, USERS_COL),
+      async (snap) => {
+        if (callbacks.onUsersChange) {
+          if (snap.empty) {
+            // Seed the initial admin account to Firestore
+            try {
+              await setDoc(doc(db, USERS_COL, DEFAULT_ADMIN_USER.id), DEFAULT_ADMIN_USER);
+            } catch (e) {
+              console.warn('Error seeding admin user to Firestore:', e);
+            }
+            callbacks.onUsersChange([DEFAULT_ADMIN_USER]);
+          } else {
+            const rawUsers = snap.docs.map((d) => d.data() as UserAccount);
+            // Filter out any legacy mock accounts that were seeded in earlier prototypes
+            const cleanUsers = rawUsers
+              .filter(
+                (u) =>
+                  u.username === 'admin' ||
+                  (!u.id.startsWith('U_REF') &&
+                    !u.id.startsWith('U_SEC') &&
+                    !u.id.startsWith('U_CAPT') &&
+                    u.username !== 'referee' &&
+                    u.username !== 'thuky1' &&
+                    u.username !== 'captain10a1')
+              )
+              .map((u) => (u.username === 'admin' ? { ...u, displayName: 'admin' } : u));
+
+            // Ensure admin is always present
+            const hasAdmin = cleanUsers.some((u) => u.username === 'admin');
+            const finalUsers = hasAdmin ? cleanUsers : [DEFAULT_ADMIN_USER, ...cleanUsers];
+            callbacks.onUsersChange(finalUsers);
+          }
+        }
+      },
+      (err) => console.warn('Firestore users listener warning:', err)
+    );
+    unsubs.push(unsubUsers);
   } catch (err) {
     console.error('Error attaching Firestore listeners:', err);
     if (callbacks.onSyncStatusChange) callbacks.onSyncStatusChange('error');
@@ -205,13 +261,12 @@ export async function deleteTeamFromFirestore(teamId: string, deleteAthletesToo 
 export async function deleteMultipleTeamsFromFirestore(teamIds: string[], deleteAthletesToo = true, allAthletes: Athlete[] = []) {
   try {
     const batch = writeBatch(db);
-    const teamSet = new Set(teamIds);
-
     teamIds.forEach((tId) => {
       batch.delete(doc(db, TEAMS_COL, tId));
     });
 
     if (deleteAthletesToo) {
+      const teamSet = new Set(teamIds);
       allAthletes
         .filter((a) => teamSet.has(a.teamId))
         .forEach((a) => {
@@ -286,5 +341,21 @@ export async function syncNotificationToFirestore(notif: NotificationItem) {
     await setDoc(doc(db, NOTIFICATIONS_COL, notif.id), notif);
   } catch (err) {
     console.warn('Error syncing notification to Firestore:', err);
+  }
+}
+
+export async function syncUserToFirestore(user: UserAccount) {
+  try {
+    await setDoc(doc(db, USERS_COL, user.id), user);
+  } catch (err) {
+    console.warn('Error syncing user account to Firestore:', err);
+  }
+}
+
+export async function deleteUserFromFirestore(userId: string) {
+  try {
+    await deleteDoc(doc(db, USERS_COL, userId));
+  } catch (err) {
+    console.warn('Error deleting user account from Firestore:', err);
   }
 }

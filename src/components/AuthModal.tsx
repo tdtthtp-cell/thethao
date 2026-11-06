@@ -405,29 +405,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
             </div>
 
-            {/* Quick Helper for Admin Account */}
-            <div className="p-3.5 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 rounded-2xl space-y-1.5 text-xs text-sky-900 dark:text-sky-200">
-              <div className="flex items-center justify-between">
-                <span className="font-bold flex items-center gap-1.5">
-                  <KeyRound className="w-3.5 h-3.5 text-sky-600" />
-                  <span>Tài khoản Ban Tổ Chức (Admin)</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUsername('admin');
-                    setPassword('admin230876');
-                  }}
-                  className="text-[11px] font-bold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
-                >
-                  ⚡ Điền nhanh
-                </button>
-              </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Tài khoản: <strong className="font-mono text-sky-600 dark:text-sky-400">admin</strong> · Họ tên: <strong className="font-mono text-sky-600 dark:text-sky-400">admin</strong> · Mật khẩu: <span className="font-mono">admin230876</span> (hoặc <span className="font-mono">admin</span>)
-              </p>
-            </div>
-
             <div>
               <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
                 Tên Đăng Nhập *

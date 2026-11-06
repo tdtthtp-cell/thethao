@@ -2,5 +2,7 @@
   "name": "Hệ Thống Quản Lý Thi Đấu Thể Thao",
   "description": "Hệ thống quản lý giải đấu thể thao học sinh toàn diện: Đăng ký vận động viên, cập nhật tỉ số trực tiếp thời gian thực, bảng xếp hạng tự động, bảo mật mã hóa đầu cuối E2EE, phân quyền đa cấp độ và xuất báo cáo PDF/Excel.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

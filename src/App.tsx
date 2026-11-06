@@ -35,6 +35,8 @@ import {
   syncMatchToFirestore,
   syncAllMatchesToFirestore,
   deleteMatchFromFirestore,
+  syncUserToFirestore,
+  deleteUserFromFirestore,
 } from './services/firestoreSync';
 import { subscribeToSync, broadcastTournamentUpdate } from './services/notifications';
 import { Header } from './components/Header';
@@ -144,6 +146,9 @@ export default function App() {
       },
       onNotificationsChange: (remoteNotifs) => {
         if (remoteNotifs) setNotifications(remoteNotifs);
+      },
+      onUsersChange: (remoteUsers) => {
+        if (remoteUsers && remoteUsers.length > 0) setUsers(remoteUsers);
       },
       onSyncStatusChange: (status) => {
         setSyncStatus(status);
@@ -594,10 +599,12 @@ export default function App() {
       }
       return [...prev, userAcc];
     });
+    syncUserToFirestore(userAcc);
   };
 
   const handleDeleteUser = (userId: string) => {
     setUsers((prev) => prev.filter((u) => u.id !== userId));
+    deleteUserFromFirestore(userId);
   };
 
   // Reset Demo Data
