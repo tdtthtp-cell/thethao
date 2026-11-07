@@ -293,6 +293,18 @@ export async function syncAthleteToFirestore(athlete: Athlete) {
   }
 }
 
+export async function syncMultipleAthletesToFirestore(athletes: Athlete[]) {
+  try {
+    const batch = writeBatch(db);
+    athletes.forEach((ath) => {
+      batch.set(doc(db, ATHLETES_COL, ath.id), ath);
+    });
+    await batch.commit();
+  } catch (err) {
+    console.warn('Error batch syncing athletes to Firestore:', err);
+  }
+}
+
 export async function deleteAthleteFromFirestore(athleteId: string) {
   try {
     await deleteDoc(doc(db, ATHLETES_COL, athleteId));

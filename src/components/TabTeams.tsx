@@ -201,7 +201,7 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
         <div>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 text-[11px] font-bold border border-sky-200 dark:border-sky-800 mb-1.5">
             <Shield className="w-3.5 h-3.5" />
-            <span>Danh sách các đội & lớp tham gia thi đấu</span>
+            <span>Tên các đội thi đấu trong 1 giải đấu</span>
           </div>
           <h2 className="text-base sm:text-lg md:text-xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
             <span>Danh Sách Đội Thi Đấu</span>
@@ -209,8 +209,8 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
               (10A1, 10A2, 11B1, 12C2...)
             </span>
           </h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            Quản lý các lớp/đội thi đấu theo khối, bảng và phân biệt rõ giới tính Nam / Nữ. Vận động viên sẽ đăng ký tham gia vào từng đội này.
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+            <strong>Danh sách đội:</strong> tên của các đội thi đấu trong 1 giải đấu (10A1, 10A2...). <strong>Danh sách VĐV:</strong> tên các vận động viên cụ thể trong 1 đội bóng.
           </p>
         </div>
 
@@ -223,7 +223,7 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
                 type="button"
                 onClick={() => setIsExcelImportModalOpen(true)}
                 className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                title="Nhập danh sách đội từ file Excel (.xlsx, .xls, .csv) có phân biệt Nam / Nữ theo bảng, khối"
+                title="Nhập danh sách các đội thi đấu trong giải từ file Excel (.xlsx, .xls, .csv)"
               >
                 <FileSpreadsheet className="w-4 h-4" />
                 <span>Nhập Đội Excel</span>
@@ -233,11 +233,11 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
               <button
                 type="button"
                 onClick={downloadTeamImportTemplateExcel}
-                className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700"
-                title="Tải file Excel mẫu chuẩn (10A1, 10A2... Nam / Nữ)"
+                className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700"
+                title="Tải cấu trúc file mẫu danh sách đội thi đấu chuẩn (gồm Sheet DanhSachDoi, Sheet DanhSachVDV_Doi_10A1 và HuongDan)"
               >
                 <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Tải File Mẫu</span>
+                <span>Mẫu Danh Sách Đội (.xlsx)</span>
               </button>
 
               {/* Add New Team */}

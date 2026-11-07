@@ -1,0 +1,424 @@
+import React, { useState, useId } from 'react';
+import {
+  X,
+  Upload,
+  FileSpreadsheet,
+  Download,
+  CheckCircle2,
+  AlertTriangle,
+  Users,
+  Search,
+  Filter,
+  Trash2,
+  Shield,
+  Layers,
+} from 'lucide-react';
+import { Athlete, Team } from '../types';
+import {
+  downloadAthleteImportTemplateExcel,
+  parseAthletesFromExcel,
+  ParsedAthleteItem,
+} from '../services/teamImport';
+import { encryptText } from '../services/crypto';
+
+interface AthleteExcelImportModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  teams: Team[];
+  onConfirmImport: (importedAthletes: Athlete[]) => void;
+}
+
+export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = ({
+  isOpen,
+  onClose,
+  teams,
+  onConfirmImport,
+}) => {
+  const fileInputId = useId();
+  const [file, setFile] = useState<File | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [previewAthletes, setPreviewAthletes] = useState<ParsedAthleteItem[]>([]);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [searchFilter, setSearchFilter] = useState('');
+  const [teamFilter, setTeamFilter] = useState('ALL');
+
+  if (!isOpen) return null;
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0];
+    if (!selected) return;
+    await processFile(selected);
+  };
+
+  const processFile = async (f: File) => {
+    setFile(f);
+    setIsLoading(true);
+    try {
+      const res = await parseAthletesFromExcel(f, teams);
+      setPreviewAthletes(res);
+      setSelectedIds(new Set(res.map((a) => a.id)));
+    } catch (err) {
+      console.error(err);
+      alert('Không thể đọc file Excel VĐV! Vui lòng kiểm tra lại định dạng file (.xlsx, .xls, .csv).');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleTeamChange = (id: string, newTeamId: string) => {
+    const targetTeam = teams.find((t) => t.id === newTeamId);
+    if (!targetTeam) return;
+
+    setPreviewAthletes((prev) =>
+      prev.map((a) =>
+        a.id === id
+          ? {
+              ...a,
+              teamId: targetTeam.id,
+              teamName: targetTeam.name,
+              group: targetTeam.group,
+            }
+          : a
+      )
+    );
+  };
+
+  const handleToggleRow = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedIds.size === filteredAthletes.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filteredAthletes.map((a) => a.id)));
+    }
+  };
+
+  const handleDeleteRow = (id: string) => {
+    setPreviewAthletes((prev) => prev.filter((a) => a.id !== id));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const filteredAthletes = previewAthletes.filter((a) => {
+    const matchSearch =
+      !searchFilter.trim() ||
+      a.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
+      a.jerseyNumber.toString().includes(searchFilter) ||
+      a.teamName.toLowerCase().includes(searchFilter.toLowerCase());
+
+    const matchTeam = teamFilter === 'ALL' || a.teamId === teamFilter || a.teamName === teamFilter;
+    return matchSearch && matchTeam;
+  });
+
+  const handleFinalConfirm = async () => {
+    const toImport = previewAthletes.filter((a) => selectedIds.has(a.id));
+    if (toImport.length === 0) {
+      alert('Vui lòng chọn ít nhất một vận động viên để nhập vào hệ thống!');
+      return;
+    }
+
+    setIsLoading(true);
+
+    // Encrypt sensitive fields with E2EE
+    const finalAthletes: Athlete[] = [];
+    for (const item of toImport) {
+      const encId = item.nationalId
+        ? await encryptText(item.nationalId)
+        : 'e2ee:aXRtc3BvcnRfZW5j';
+      const encPhone = item.phone
+        ? await encryptText(item.phone)
+        : 'e2ee:aXRtc3BvcnRfZW5j';
+
+      finalAthletes.push({
+        id: `A_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${finalAthletes.length + 1}`,
+        name: item.name,
+        jerseyNumber: item.jerseyNumber,
+        teamId: item.teamId,
+        teamName: item.teamName,
+        group: item.group,
+        position: item.position,
+        dateOfBirth: item.dateOfBirth,
+        nationalIdEncrypted: encId,
+        phoneEncrypted: encPhone,
+        status: 'approved',
+        registeredAt: new Date().toISOString().slice(0, 10),
+        goalsOrPoints: 0,
+        yellowCards: 0,
+        redCards: 0,
+        mvpCount: 0,
+      });
+    }
+
+    setIsLoading(false);
+    onConfirmImport(finalAthletes);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-md p-4 animate-in fade-in">
+      <div className="w-full max-w-4xl max-h-[92vh] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 shadow-xs">
+              <Users className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
+                <span>Nhập Danh Sách Vận Động Viên Trong Đội</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold">
+                  File Excel
+                </span>
+              </h3>
+              <p className="text-xs text-slate-400">
+                Danh sách VĐV là tên các vận động viên cụ thể thuộc 1 đội (10A1, 10A2...).
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1">
+          {/* Download Template Banner */}
+          <div className="p-4 bg-gradient-to-r from-indigo-50 via-sky-50 to-blue-50 dark:from-indigo-950/30 dark:via-sky-950/20 dark:to-blue-950/30 rounded-2xl border border-indigo-200/80 dark:border-indigo-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2 text-indigo-800 dark:text-indigo-300 font-bold text-xs sm:text-sm">
+                <FileSpreadsheet className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <span>Tải file Excel mẫu danh sách VĐV theo đội:</span>
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                Gồm các cột: STT, Họ và Tên VĐV, Số Áo, Đội / Lớp, Vị Trí, Ngày Sinh, SĐT, CCCD, Ghi Chú.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => downloadAthleteImportTemplateExcel(teams[0]?.name || '10A1')}
+              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Tải Mẫu VĐV (.xlsx)</span>
+            </button>
+          </div>
+
+          {/* Upload Dropzone */}
+          {!file && (
+            <label
+              htmlFor={fileInputId}
+              className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 rounded-3xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition bg-slate-50/50 dark:bg-slate-900/50 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 group"
+            >
+              <div className="w-14 h-14 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-3 group-hover:scale-110 transition shadow-xs">
+                <Upload className="w-7 h-7" />
+              </div>
+              <p className="font-bold text-sm text-slate-800 dark:text-slate-200 mb-1">
+                Kéo thả file Excel danh sách VĐV vào đây hoặc <span className="text-indigo-600 dark:text-indigo-400 underline">bấm để chọn file</span>
+              </p>
+              <p className="text-xs text-slate-400">Hỗ trợ các định dạng .xlsx, .xls, .csv</p>
+              <input
+                id={fileInputId}
+                type="file"
+                accept=".xlsx, .xls, .csv"
+                onChange={handleFileChange}
+                className="hidden"
+              />
+            </label>
+          )}
+
+          {/* Preview Section */}
+          {file && (
+            <div className="space-y-4">
+              {/* File Info Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-100 dark:bg-slate-800/60 rounded-2xl text-xs">
+                <div className="flex items-center gap-2">
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                  <span className="font-bold text-slate-800 dark:text-slate-200">{file.name}</span>
+                  <span className="text-slate-400">
+                    ({previewAthletes.length} vận động viên tìm thấy)
+                  </span>
+                </div>
+                <label
+                  htmlFor={fileInputId}
+                  className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+                >
+                  Chọn file khác
+                  <input
+                    id={fileInputId}
+                    type="file"
+                    accept=".xlsx, .xls, .csv"
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              {/* Filter Toolbar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-200 dark:border-slate-800">
+                <div className="relative flex-1 min-w-[180px]">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={searchFilter}
+                    onChange={(e) => setSearchFilter(e.target.value)}
+                    placeholder="Tìm theo tên VĐV, số áo, đội..."
+                    className="w-full pl-9 pr-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="text-slate-500">Đội:</span>
+                  <select
+                    value={teamFilter}
+                    onChange={(e) => setTeamFilter(e.target.value)}
+                    className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs"
+                  >
+                    <option value="ALL">Tất cả đội ({previewAthletes.length})</option>
+                    {teams.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Preview Table */}
+              <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden max-h-72 overflow-y-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 uppercase text-[10px] font-bold sticky top-0">
+                    <tr>
+                      <th className="p-3 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={
+                            filteredAthletes.length > 0 &&
+                            selectedIds.size === filteredAthletes.length
+                          }
+                          onChange={handleToggleSelectAll}
+                          className="w-4 h-4 rounded text-indigo-600 cursor-pointer"
+                        />
+                      </th>
+                      <th className="p-3">Số Áo</th>
+                      <th className="p-3">Họ Và Tên VĐV</th>
+                      <th className="p-3">Đội / Lớp Thi Đấu</th>
+                      <th className="p-3">Vị Trí</th>
+                      <th className="p-3">Ngày Sinh</th>
+                      <th className="p-3">CCCD / SĐT</th>
+                      <th className="p-3 text-right">Xóa</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {filteredAthletes.map((a) => {
+                      const isSelected = selectedIds.has(a.id);
+                      return (
+                        <tr
+                          key={a.id}
+                          className={`hover:bg-slate-50/70 dark:hover:bg-slate-800/40 transition ${
+                            isSelected ? 'bg-indigo-50/40 dark:bg-indigo-950/20' : ''
+                          }`}
+                        >
+                          <td className="p-3 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => handleToggleRow(a.id)}
+                              className="w-4 h-4 rounded text-indigo-600 cursor-pointer"
+                            />
+                          </td>
+                          <td className="p-3 font-mono font-black text-indigo-600 dark:text-indigo-400">
+                            #{a.jerseyNumber}
+                          </td>
+                          <td className="p-3 font-bold text-slate-800 dark:text-slate-200">
+                            {a.name}
+                          </td>
+                          <td className="p-3">
+                            <select
+                              value={a.teamId}
+                              onChange={(e) => handleTeamChange(a.id, e.target.value)}
+                              className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-semibold"
+                            >
+                              {teams.map((t) => (
+                                <option key={t.id} value={t.id}>
+                                  {t.name} ({t.group})
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="p-3 text-slate-600 dark:text-slate-300">{a.position}</td>
+                          <td className="p-3 font-mono text-[11px] text-slate-500">
+                            {a.dateOfBirth}
+                          </td>
+                          <td className="p-3 font-mono text-[11px] text-slate-500">
+                            <div>{a.nationalId || '---'}</div>
+                            <div className="text-[10px] text-slate-400">{a.phone || '---'}</div>
+                          </td>
+                          <td className="p-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteRow(a.id)}
+                              className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0 bg-slate-50 dark:bg-slate-950">
+          <div className="text-xs text-slate-500">
+            {file ? (
+              <span>
+                Đã chọn <strong className="text-indigo-600 font-bold">{selectedIds.size}</strong> /{' '}
+                {previewAthletes.length} vận động viên
+              </span>
+            ) : (
+              <span>Chưa chọn file dữ liệu</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
+            >
+              Hủy
+            </button>
+            <button
+              type="button"
+              onClick={handleFinalConfirm}
+              disabled={!file || selectedIds.size === 0 || isLoading}
+              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Xác Nhận Nhập VĐV ({selectedIds.size})</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};

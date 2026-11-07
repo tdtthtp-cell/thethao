@@ -31,6 +31,7 @@ import {
   deleteTeamFromFirestore,
   deleteMultipleTeamsFromFirestore,
   syncAthleteToFirestore,
+  syncMultipleAthletesToFirestore,
   deleteAthleteFromFirestore,
   deleteMultipleAthletesFromFirestore,
   syncMatchToFirestore,
@@ -542,6 +543,29 @@ export default function App() {
     broadcastTournamentUpdate('ATHLETES_UPDATED', { updatedCount: athleteIds.length, status });
   };
 
+  const handleImportMultipleAthletes = (incomingAthletes: Athlete[]) => {
+    if (incomingAthletes.length === 0) return;
+
+    setAthletes((prev) => {
+      const existingMap = new Map(prev.map((a) => [a.id, a]));
+      incomingAthletes.forEach((a) => existingMap.set(a.id, a));
+      return Array.from(existingMap.values());
+    });
+
+    syncMultipleAthletesToFirestore(incomingAthletes);
+    broadcastTournamentUpdate('ATHLETES_UPDATED', { importedCount: incomingAthletes.length });
+
+    const notif: NotificationItem = {
+      id: 'N_' + Date.now(),
+      type: 'system',
+      title: 'Nhập danh sách VĐV từ Excel thành công',
+      message: `Đã nhập thành công ${incomingAthletes.length} vận động viên vào các đội.`,
+      timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+      read: false,
+    };
+    setNotifications((prev) => [notif, ...prev]);
+  };
+
   const handleSaveTeam = (team: Team) => {
     setTeams((prev) => {
       const idx = prev.findIndex((t) => t.id === team.id);
@@ -808,6 +832,7 @@ export default function App() {
             onDeleteMultipleAthletes={handleDeleteMultipleAthletes}
             onApproveAthlete={handleApproveAthlete}
             onApproveMultipleAthletes={handleApproveMultipleAthletes}
+            onImportMultipleAthletes={handleImportMultipleAthletes}
           />
         )}
 

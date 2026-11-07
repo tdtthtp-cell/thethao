@@ -19,9 +19,13 @@ import {
   LogIn,
   Shield,
   ExternalLink,
+  FileSpreadsheet,
+  Download,
 } from 'lucide-react';
 import { Athlete, Team, TournamentConfig, UserProfile } from '../types';
 import { decryptText, maskSensitive } from '../services/crypto';
+import { AthleteExcelImportModal } from './AthleteExcelImportModal';
+import { downloadAthleteImportTemplateExcel } from '../services/teamImport';
 
 interface TabAthletesProps {
   athletes: Athlete[];
@@ -37,6 +41,7 @@ interface TabAthletesProps {
   onDeleteMultipleAthletes?: (athleteIds: string[]) => void;
   onApproveAthlete: (athleteId: string, status: Athlete['status']) => void;
   onApproveMultipleAthletes?: (athleteIds: string[], status: Athlete['status']) => void;
+  onImportMultipleAthletes?: (athletes: Athlete[]) => void;
 }
 
 export const TabAthletes: React.FC<TabAthletesProps> = ({
@@ -53,11 +58,15 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
   onDeleteMultipleAthletes,
   onApproveAthlete,
   onApproveMultipleAthletes,
+  onImportMultipleAthletes,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<string>('ALL');
   const [selectedTeamFilter, setSelectedTeamFilter] = useState<string>(initialTeamFilter || 'ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
+
+  // Excel Athlete Import Modal state
+  const [isAthleteImportModalOpen, setIsAthleteImportModalOpen] = useState(false);
 
   // Update filter when initialTeamFilter changes
   useEffect(() => {
@@ -179,13 +188,13 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
         <div>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[11px] font-bold border border-indigo-200 dark:border-indigo-800 mb-1.5">
             <Users className="w-3.5 h-3.5" />
-            <span>Hồ sơ vận động viên từng cá nhân</span>
+            <span>Tên các vận động viên cụ thể trong 1 đội</span>
           </div>
           <h2 className="text-base sm:text-lg md:text-xl font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-            <span>Danh Sách & Hồ Sơ Vận Động Viên</span>
+            <span>Danh Sách Vận Động Viên (Trong Đội)</span>
           </h2>
-          <p className="text-xs text-slate-400 mt-0.5">
-            Vận động viên đăng ký theo từng đội bóng/lớp học. Thông tin CCCD & SĐT được bảo vệ bằng chuẩn mã hóa đầu cuối E2EE AES-256.
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">
+            <strong>Danh sách VĐV:</strong> tên các vận động viên cụ thể trong 1 đội bóng (10A1, 10A2...). <strong>Danh sách đội:</strong> tên các đội thi đấu trong giải đấu.
           </p>
         </div>
 
@@ -196,22 +205,51 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
               type="button"
               onClick={onNavigateToTeams}
               className="px-3.5 py-2 bg-sky-50 dark:bg-sky-950/50 hover:bg-sky-100 dark:hover:bg-sky-900/50 text-sky-700 dark:text-sky-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-sky-200 dark:border-sky-800 cursor-pointer"
-              title="Chuyển sang màn hình quản lý danh sách đội (10A1, 10A2...)"
+              title="Chuyển sang màn hình quản lý danh sách đội thi đấu trong giải (10A1, 10A2...)"
             >
               <Shield className="w-3.5 h-3.5" />
-              <span>Quản Lý Danh Sách Đội (10A1, 10A2...) →</span>
+              <span>Quản Lý Đội Thi Đấu →</span>
             </button>
           )}
 
-          {canRegister ? (
-            <button
-              onClick={onOpenAddAthlete}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
-            >
-              <UserPlus className="w-4 h-4" />
-              <span>Đăng Ký VĐV Mới</span>
-            </button>
-          ) : (
+          {canRegister && (
+            <>
+              {/* Import Athletes from Excel */}
+              <button
+                type="button"
+                onClick={() => setIsAthleteImportModalOpen(true)}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                title="Nhập danh sách VĐV của đội từ file Excel (.xlsx, .xls, .csv)"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Nhập VĐV Excel</span>
+              </button>
+
+              {/* Download Athlete Template */}
+              <button
+                type="button"
+                onClick={() => {
+                  const targetTeam = teams.find((t) => t.id === selectedTeamFilter);
+                  downloadAthleteImportTemplateExcel(targetTeam?.name || (teams[0]?.name || '10A1'));
+                }}
+                className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700"
+                title="Tải cấu trúc file mẫu danh sách vận động viên trong 1 đội (.xlsx)"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Mẫu VĐV Đội (.xlsx)</span>
+              </button>
+
+              <button
+                onClick={onOpenAddAthlete}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Đăng Ký VĐV</span>
+              </button>
+            </>
+          )}
+
+          {!canRegister && (
             <button
               type="button"
               onClick={onOpenLogin}
@@ -630,6 +668,18 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
           </div>
         </div>
       )}
+
+      {/* Excel Athlete Import Modal */}
+      <AthleteExcelImportModal
+        isOpen={isAthleteImportModalOpen}
+        onClose={() => setIsAthleteImportModalOpen(false)}
+        teams={teams}
+        onConfirmImport={(imported) => {
+          if (onImportMultipleAthletes) {
+            onImportMultipleAthletes(imported);
+          }
+        }}
+      />
     </div>
   );
 };
