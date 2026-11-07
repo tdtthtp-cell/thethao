@@ -56,6 +56,7 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [resetPassInput, setResetPassInput] = useState('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [statusNotice, setStatusNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const isAdmin = currentUser.role === 'admin';
 
@@ -86,19 +87,31 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
 
   const handleCreateUser = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAccUser.trim() || !newAccPass.trim()) return alert('Vui lòng điền đủ tên đăng nhập & mật khẩu!');
+    setStatusNotice(null);
+    if (!newAccUser.trim() || !newAccPass.trim()) {
+      setStatusNotice({ type: 'error', text: 'Vui lòng điền đủ tên đăng nhập & mật khẩu!' });
+      return;
+    }
     if (users.length >= 30) {
-      return alert('Hệ thống đã đạt giới hạn tối đa 30 tài khoản người dùng! Vui lòng xóa bớt tài khoản nếu muốn cấp thêm.');
+      setStatusNotice({
+        type: 'error',
+        text: 'Hệ thống đã đạt giới hạn tối đa 30 tài khoản người dùng! Vui lòng xóa bớt tài khoản nếu muốn cấp thêm.',
+      });
+      return;
     }
     const exists = users.some(
       (u) => u.username.toLowerCase() === newAccUser.trim().toLowerCase()
     );
     if (exists) {
-      return alert('Tên đăng nhập này đã tồn tại trong hệ thống!');
+      setStatusNotice({
+        type: 'error',
+        text: `Tên đăng nhập "${newAccUser.trim()}" đã tồn tại! Vui lòng chọn tên đăng nhập khác.`,
+      });
+      return;
     }
 
     const newAcc: UserAccount = {
-      id: 'U_' + Date.now(),
+      id: 'U_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
       username: newAccUser.trim(),
       password: newAccPass.trim(),
       displayName: newAccName.trim() || newAccUser.trim(),
@@ -119,7 +132,10 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
     setNewAccUser('');
     setNewAccName('');
     setNewAccPass('');
-    alert(`Đã cấp tài khoản "${newAcc.username}" thành công (${users.length + 1}/30 tài khoản)!`);
+    setStatusNotice({
+      type: 'success',
+      text: `Đã cấp tài khoản "${newAcc.username}" (${newAcc.displayName}) thành công! Đang lưu vào cơ sở dữ liệu Firestore (${users.length + 1}/30 tài khoản).`,
+    });
   };
 
   return (
@@ -247,6 +263,18 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
                 <UserPlus className="w-4 h-4 text-sky-500" />
                 Cấp Tài Khoản Mới
               </div>
+
+              {statusNotice && (
+                <div
+                  className={`p-2.5 rounded-xl text-xs font-medium border ${
+                    statusNotice.type === 'success'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
+                      : 'bg-rose-50 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300 border-rose-300 dark:border-rose-800'
+                  }`}
+                >
+                  {statusNotice.text}
+                </div>
+              )}
 
               <div>
                 <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Tên đăng nhập *</label>
@@ -399,13 +427,19 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
                               />
                               <button
                                 onClick={() => {
-                                  if (!resetPassInput.trim()) return alert('Vui lòng nhập mật khẩu!');
+                                  if (!resetPassInput.trim()) {
+                                    setStatusNotice({ type: 'error', text: 'Vui lòng nhập mật khẩu mới cần reset!' });
+                                    return;
+                                  }
                                   onSaveUser({ ...u, password: resetPassInput.trim() });
                                   setEditingUserId(null);
                                   setResetPassInput('');
-                                  alert(`Đã đổi mật khẩu cho ${u.username}!`);
+                                  setStatusNotice({
+                                    type: 'success',
+                                    text: `Đã đổi mật khẩu cho tài khoản "${u.username}" thành công!`,
+                                  });
                                 }}
-                                className="px-2 py-0.5 bg-emerald-600 text-white rounded text-[11px] font-bold"
+                                className="px-2 py-0.5 bg-emerald-600 text-white rounded text-[11px] font-bold cursor-pointer"
                               >
                                 Lưu
                               </button>

@@ -4,9 +4,10 @@ import { Home, Users, Calendar, Trophy, FileSpreadsheet, Sliders } from 'lucide-
 interface MobileNavProps {
   activeTab: string;
   onTabChange: (tabId: string) => void;
+  onOpenReports?: () => void;
 }
 
-export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onTabChange }) => {
+export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onTabChange, onOpenReports }) => {
   const tabs = [
     { id: 'overview', label: 'Tổng Quan', icon: Home },
     { id: 'athletes', label: 'VĐV/Đội', icon: Users },
@@ -25,7 +26,13 @@ export const MobileNav: React.FC<MobileNavProps> = ({ activeTab, onTabChange }) 
           return (
             <button
               key={tab.id}
-              onClick={() => onTabChange(tab.id)}
+              onClick={() => {
+                if (tab.id === 'reports' && onOpenReports) {
+                  onOpenReports();
+                } else {
+                  onTabChange(tab.id);
+                }
+              }}
               className={`flex flex-col items-center justify-center min-h-[44px] min-w-[44px] py-1 transition-colors ${
                 isActive
                   ? 'text-sky-600 dark:text-sky-400 font-bold'

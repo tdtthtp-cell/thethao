@@ -174,18 +174,10 @@ export function subscribeToFirestore(callbacks: {
             callbacks.onUsersChange([DEFAULT_ADMIN_USER]);
           } else {
             const rawUsers = snap.docs.map((d) => d.data() as UserAccount);
-            // Filter out any legacy mock accounts that were seeded in earlier prototypes
+            // Only filter out legacy mock IDs from early prototypes
+            const LEGACY_MOCK_USER_IDS = new Set(['U_REF_1', 'U_SEC_1', 'U_CAPT_1']);
             const cleanUsers = rawUsers
-              .filter(
-                (u) =>
-                  u.username === 'admin' ||
-                  (!u.id.startsWith('U_REF') &&
-                    !u.id.startsWith('U_SEC') &&
-                    !u.id.startsWith('U_CAPT') &&
-                    u.username !== 'referee' &&
-                    u.username !== 'thuky1' &&
-                    u.username !== 'captain10a1')
-              )
+              .filter((u) => !LEGACY_MOCK_USER_IDS.has(u.id))
               .map((u) => (u.username === 'admin' ? { ...u, displayName: 'admin' } : u));
 
             // Ensure admin is always present

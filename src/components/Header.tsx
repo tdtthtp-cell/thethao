@@ -30,6 +30,7 @@ interface HeaderProps {
   onToggleDark: () => void;
   onThemeColorChange: (color: TournamentConfig['themeColor']) => void;
   syncStatus?: 'synced' | 'connecting' | 'error';
+  onOpenReports?: () => void;
 }
 
 const GoogleIcon = () => (
@@ -65,6 +66,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleDark,
   onThemeColorChange,
   syncStatus = 'synced',
+  onOpenReports,
 }) => {
   const [showThemePicker, setShowThemePicker] = React.useState(false);
 
@@ -278,7 +280,13 @@ export const Header: React.FC<HeaderProps> = ({
               return (
                 <button
                   key={link.id}
-                  onClick={() => onTabChange(link.id)}
+                  onClick={() => {
+                    if (link.id === 'reports' && onOpenReports) {
+                      onOpenReports();
+                    } else {
+                      onTabChange(link.id);
+                    }
+                  }}
                   className={`flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold rounded-xl transition-all whitespace-nowrap shrink-0 cursor-pointer ${
                     isActive
                       ? 'bg-sky-600 text-white shadow-xs'

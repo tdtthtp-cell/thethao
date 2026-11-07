@@ -289,6 +289,283 @@ export function exportMatchMinutesToWord(match: Match, config: TournamentConfig)
 }
 
 /**
+ * Export Standings to Word (.doc)
+ */
+export function exportStandingsToWord(
+  config: TournamentConfig,
+  standingsByGroup: Record<string, StandingItem[]>,
+  selectedGroup?: string
+) {
+  const groupsToExport =
+    selectedGroup && selectedGroup !== 'ALL'
+      ? { [selectedGroup]: standingsByGroup[selectedGroup] || [] }
+      : standingsByGroup;
+
+  let tablesHtml = '';
+
+  Object.entries(groupsToExport).forEach(([groupName, items]) => {
+    let rowsHtml = '';
+    items.forEach((item, idx) => {
+      rowsHtml += `
+        <tr>
+          <td style="border: 1px solid black; padding: 6px; text-align: center;">${idx + 1}</td>
+          <td style="border: 1px solid black; padding: 6px; font-weight: bold; text-align: left;">${item.team.name}</td>
+          <td style="border: 1px solid black; padding: 6px; text-align: center;">${groupName}</td>
+          <td style="border: 1px solid black; padding: 6px; text-align: center;">${item.played}</td>
+          <td style="border: 1px solid black; padding: 6px; text-align: center;">${item.won}</td>
+          <td style="border: 1px solid black; padding: 6px; text-align: center;">${item.drawn}</td>
+          <td style="border: 1px solid black; padding: 6px; text-align: center;">${item.lost}</td>
+          <td style="border: 1px solid black; padding: 6px; text-align: center;">${item.ptsFor} - ${item.ptsAgainst}</td>
+          <td style="border: 1px solid black; padding: 6px; text-align: center;">${item.ptsFor - item.ptsAgainst > 0 ? '+' : ''}${item.ptsFor - item.ptsAgainst}</td>
+          <td style="border: 1px solid black; padding: 6px; text-align: center; font-weight: bold; color: #1e40af;">${item.points}</td>
+          <td style="border: 1px solid black; padding: 6px; text-align: center;">${idx === 0 ? 'Nhất bảng' : idx === 1 ? 'Nhì bảng' : idx === 2 ? 'Ba bảng' : ''}</td>
+        </tr>
+      `;
+    });
+
+    tablesHtml += `
+      <h3 style="margin-top: 20px; margin-bottom: 6px; font-size: 13pt; color: #1e3a8a; text-transform: uppercase;">
+        BẢNG THI ĐẤU: ${groupName}
+      </h3>
+      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+        <thead>
+          <tr style="background-color: #f1f5f9; font-weight: bold;">
+            <th style="border: 1px solid black; padding: 6px; width: 45px;">Hạng</th>
+            <th style="border: 1px solid black; padding: 6px; text-align: left;">Tên Đội (Lớp)</th>
+            <th style="border: 1px solid black; padding: 6px; width: 80px;">Bảng/Khối</th>
+            <th style="border: 1px solid black; padding: 6px; width: 50px;">Số Trận</th>
+            <th style="border: 1px solid black; padding: 6px; width: 45px;">Thắng</th>
+            <th style="border: 1px solid black; padding: 6px; width: 45px;">Hòa</th>
+            <th style="border: 1px solid black; padding: 6px; width: 45px;">Thua</th>
+            <th style="border: 1px solid black; padding: 6px; width: 75px;">Điểm Số</th>
+            <th style="border: 1px solid black; padding: 6px; width: 65px;">Hiệu Số</th>
+            <th style="border: 1px solid black; padding: 6px; width: 65px;">Tổng Điểm</th>
+            <th style="border: 1px solid black; padding: 6px; width: 85px;">Ghi Chú</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml || '<tr><td colspan="11" style="text-align: center; padding: 10px;">Chưa có dữ liệu</td></tr>'}
+        </tbody>
+      </table>
+    `;
+  });
+
+  const html = `
+    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+    <head>
+      <meta charset='utf-8'>
+      <title>Bảng Xếp Hạng Thi Đấu</title>
+      <style>
+        body { font-family: 'Times New Roman', Times, serif; font-size: 13pt; line-height: 1.35; color: black; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+        th, td { border: 1px solid black; padding: 6px 8px; font-size: 11pt; }
+        .text-center { text-align: center; }
+        .text-left { text-align: left; }
+        .font-bold { font-weight: bold; }
+        .uppercase { text-transform: uppercase; }
+      </style>
+    </head>
+    <body>
+      <table style="width: 100%; border: none; margin-bottom: 15px;">
+        <tr>
+          <td style="width: 45%; text-align: center; vertical-align: top; border: none;">
+            <p style="margin: 0;">${config.schoolName}</p>
+            <p style="margin: 2px 0; font-weight: bold;">${config.deptName}</p>
+            <p style="margin: 0;">***</p>
+          </td>
+          <td style="width: 55%; text-align: center; vertical-align: top; border: none;">
+            <p style="margin: 0; font-weight: bold;">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
+            <p style="margin: 2px 0; font-style: italic;">Độc lập - Tự do - Hạnh phúc</p>
+            <p style="margin: 0;">---------------</p>
+          </td>
+        </tr>
+      </table>
+
+      <div style="text-align: center; margin: 20px 0 15px 0;">
+        <h2 style="margin: 0; font-size: 15pt; font-weight: bold; text-transform: uppercase;">BẢNG XẾP HẠNG GIẢI THI ĐẤU THỂ THAO</h2>
+        <p style="margin: 4px 0; font-weight: bold; color: #1e3a8a;">${config.tournamentName}</p>
+        <p style="margin: 2px 0; font-size: 11pt; font-style: italic;">Thời điểm lập bảng: Ngày ${new Date().toLocaleDateString('vi-VN')}</p>
+      </div>
+
+      ${tablesHtml}
+
+      <table style="width: 100%; margin-top: 30px; text-align: center; border: none;">
+        <tr>
+          <td style="width: 33%; font-weight: bold; border: none;">
+            TỔ TRƯỞNG CHUYÊN MÔN<br><br><br><br>
+            <span style="font-weight: normal;">(Ký, ghi rõ họ tên)</span>
+          </td>
+          <td style="width: 33%; font-weight: bold; border: none;">
+            TRỌNG TÀI CHÍNH<br><br><br><br>
+            <span style="font-weight: normal;">${config.referee}</span>
+          </td>
+          <td style="width: 33%; font-weight: bold; border: none;">
+            TRƯỞNG BAN TỔ CHỨC<br><br><br><br>
+            <span style="font-weight: normal;">${config.organizer}</span>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+
+  const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `BangXepHang_${new Date().toISOString().slice(0, 10)}.doc`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Export Match Schedule and Results to Word (.doc)
+ */
+export function exportScheduleToWord(
+  config: TournamentConfig,
+  matches: Match[],
+  selectedStage?: string
+) {
+  const targetMatches =
+    selectedStage && selectedStage !== 'ALL'
+      ? matches.filter((m) => m.stage === selectedStage)
+      : matches;
+
+  let rowsHtml = '';
+  targetMatches.forEach((m, idx) => {
+    let scoreText = '-';
+    if (m.status === 'FINISHED' || m.status === 'LIVE') {
+      const isFootball = config.activeSportId === 'football';
+      if (isFootball) {
+        scoreText = `${m.scores.set1.home} - ${m.scores.set1.away}`;
+        if (m.scores.pen.played) scoreText += ` (Pen: ${m.scores.pen.home}-${m.scores.pen.away})`;
+      } else {
+        let hW = 0, aW = 0;
+        for (let s = 1; s <= (config.matchSetsRule || 3); s++) {
+          const sc = m.scores[`set${s}` as keyof typeof m.scores] as { home: number; away: number };
+          if (sc && (sc.home > 0 || sc.away > 0)) {
+            if (sc.home > sc.away) hW++;
+            else if (sc.away > sc.home) aW++;
+          }
+        }
+        scoreText = `${hW} - ${aW}`;
+      }
+    }
+
+    const statusText =
+      m.status === 'FINISHED'
+        ? 'Đã kết thúc'
+        : m.status === 'LIVE'
+        ? 'Đang thi đấu'
+        : 'Chưa thi đấu';
+
+    rowsHtml += `
+      <tr>
+        <td style="border: 1px solid black; padding: 6px; text-align: center;">${idx + 1}</td>
+        <td style="border: 1px solid black; padding: 6px; text-align: center; font-weight: bold;">${m.code}</td>
+        <td style="border: 1px solid black; padding: 6px; text-align: center;">${m.stage}</td>
+        <td style="border: 1px solid black; padding: 6px; text-align: center;">${m.date || ''}</td>
+        <td style="border: 1px solid black; padding: 6px; text-align: center;">${m.time}</td>
+        <td style="border: 1px solid black; padding: 6px; text-align: center;">${m.pitch}</td>
+        <td style="border: 1px solid black; padding: 6px; text-align: right; font-weight: bold;">${m.home.name}</td>
+        <td style="border: 1px solid black; padding: 6px; text-align: center; font-weight: bold; background-color: #f8fafc; color: #1e3a8a;">${scoreText}</td>
+        <td style="border: 1px solid black; padding: 6px; text-align: left; font-weight: bold;">${m.away.name}</td>
+        <td style="border: 1px solid black; padding: 6px; text-align: center;">${statusText}</td>
+        <td style="border: 1px solid black; padding: 6px; text-align: center; font-size: 10pt;">${m.refereeName || config.referee}</td>
+      </tr>
+    `;
+  });
+
+  const html = `
+    <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+    <head>
+      <meta charset='utf-8'>
+      <title>Lịch Thi Đấu & Kết Quả</title>
+      <style>
+        body { font-family: 'Times New Roman', Times, serif; font-size: 13pt; line-height: 1.35; color: black; }
+        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+        th, td { border: 1px solid black; padding: 6px; font-size: 10.5pt; }
+        .text-center { text-align: center; }
+        .font-bold { font-weight: bold; }
+      </style>
+    </head>
+    <body>
+      <table style="width: 100%; border: none; margin-bottom: 15px;">
+        <tr>
+          <td style="width: 45%; text-align: center; vertical-align: top; border: none;">
+            <p style="margin: 0;">${config.schoolName}</p>
+            <p style="margin: 2px 0; font-weight: bold;">${config.deptName}</p>
+            <p style="margin: 0;">***</p>
+          </td>
+          <td style="width: 55%; text-align: center; vertical-align: top; border: none;">
+            <p style="margin: 0; font-weight: bold;">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
+            <p style="margin: 2px 0; font-style: italic;">Độc lập - Tự do - Hạnh phúc</p>
+            <p style="margin: 0;">---------------</p>
+          </td>
+        </tr>
+      </table>
+
+      <div style="text-align: center; margin: 20px 0 15px 0;">
+        <h2 style="margin: 0; font-size: 15pt; font-weight: bold; text-transform: uppercase;">LỊCH THI ĐẤU VÀ KẾT QUẢ GIẢI THỂ THAO</h2>
+        <p style="margin: 4px 0; font-weight: bold; color: #1e3a8a;">${config.tournamentName}</p>
+        <p style="margin: 2px 0; font-size: 11pt; font-style: italic;">Ngày xuất văn bản: ${new Date().toLocaleDateString('vi-VN')}</p>
+      </div>
+
+      <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+        <thead>
+          <tr style="background-color: #f1f5f9; font-weight: bold;">
+            <th style="border: 1px solid black; padding: 6px; width: 35px;">STT</th>
+            <th style="border: 1px solid black; padding: 6px; width: 65px;">Mã Trận</th>
+            <th style="border: 1px solid black; padding: 6px; width: 75px;">Vòng/Bảng</th>
+            <th style="border: 1px solid black; padding: 6px; width: 75px;">Ngày</th>
+            <th style="border: 1px solid black; padding: 6px; width: 55px;">Giờ</th>
+            <th style="border: 1px solid black; padding: 6px; width: 70px;">Sân</th>
+            <th style="border: 1px solid black; padding: 6px; text-align: right;">Đội 1 (Nhà)</th>
+            <th style="border: 1px solid black; padding: 6px; width: 65px;">Tỉ Số</th>
+            <th style="border: 1px solid black; padding: 6px; text-align: left;">Đội 2 (Khách)</th>
+            <th style="border: 1px solid black; padding: 6px; width: 85px;">Trạng Thái</th>
+            <th style="border: 1px solid black; padding: 6px; width: 90px;">Trọng Tài</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rowsHtml || '<tr><td colspan="11" style="text-align: center; padding: 10px;">Chưa có trận đấu nào</td></tr>'}
+        </tbody>
+      </table>
+
+      <table style="width: 100%; margin-top: 30px; text-align: center; border: none;">
+        <tr>
+          <td style="width: 33%; font-weight: bold; border: none;">
+            THƯ KÝ BÀN<br><br><br><br>
+            <span style="font-weight: normal;">${config.secretary}</span>
+          </td>
+          <td style="width: 33%; font-weight: bold; border: none;">
+            TRỌNG TÀI CHÍNH<br><br><br><br>
+            <span style="font-weight: normal;">${config.referee}</span>
+          </td>
+          <td style="width: 33%; font-weight: bold; border: none;">
+            TRƯỞNG BAN TỔ CHỨC<br><br><br><br>
+            <span style="font-weight: normal;">${config.organizer}</span>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+
+  const blob = new Blob(['\ufeff', html], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `LichThiDau_${new Date().toISOString().slice(0, 10)}.doc`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
  * Export full tournament state into unencrypted JSON
  */
 export function exportTournamentBackupJSON(data: unknown) {

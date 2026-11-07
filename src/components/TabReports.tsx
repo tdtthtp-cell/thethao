@@ -15,6 +15,8 @@ import { Athlete, Match, StandingItem, Team, TournamentConfig } from '../types';
 import {
   exportTournamentToExcel,
   exportMatchMinutesToWord,
+  exportStandingsToWord,
+  exportScheduleToWord,
   exportTournamentBackupJSON,
   exportEncryptedBackupPackage,
   importEncryptedBackupPackage,
@@ -27,6 +29,7 @@ interface TabReportsProps {
   matches: Match[];
   standingsByGroup: Record<string, StandingItem[]>;
   onRestoreState: (state: unknown) => void;
+  onOpenReportsModal?: () => void;
 }
 
 export const TabReports: React.FC<TabReportsProps> = ({
@@ -36,6 +39,7 @@ export const TabReports: React.FC<TabReportsProps> = ({
   matches,
   standingsByGroup,
   onRestoreState,
+  onOpenReportsModal,
 }) => {
   const [encryptPassword, setEncryptPassword] = useState('');
   const [decryptPassword, setDecryptPassword] = useState('');
@@ -64,6 +68,26 @@ export const TabReports: React.FC<TabReportsProps> = ({
     } catch (e) {
       console.error(e);
       setNotice({ text: 'Lỗi khi xuất biên bản Word.', type: 'error' });
+    }
+  };
+
+  const handleExportWordStandings = () => {
+    try {
+      exportStandingsToWord(config, standingsByGroup, 'ALL');
+      setNotice({ text: 'Đã xuất Bảng Xếp Hạng toàn giải sang Word (.doc)!', type: 'success' });
+    } catch (e) {
+      console.error(e);
+      setNotice({ text: 'Lỗi khi xuất bảng xếp hạng Word.', type: 'error' });
+    }
+  };
+
+  const handleExportWordSchedule = () => {
+    try {
+      exportScheduleToWord(config, matches, 'ALL');
+      setNotice({ text: 'Đã xuất Lịch Thi Đấu & Kết Quả sang Word (.doc)!', type: 'success' });
+    } catch (e) {
+      console.error(e);
+      setNotice({ text: 'Lỗi khi xuất lịch thi đấu Word.', type: 'error' });
     }
   };
 
@@ -137,8 +161,63 @@ export const TabReports: React.FC<TabReportsProps> = ({
             Báo Cáo & Xuất Dữ Liệu Hành Chính Chuẩn
           </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Xuất file Excel (.xlsx) đa bảng tính, biên bản thi đấu Word (.doc) và sao lưu mã hóa AES-256
+            Xuất file Word (.doc) cho bảng xếp hạng, lịch đấu, biên bản, sổ báo cáo Excel (.xlsx) và sao lưu AES-256
           </p>
+        </div>
+
+        {onOpenReportsModal && (
+          <button
+            type="button"
+            onClick={onOpenReportsModal}
+            className="px-4 py-2.5 bg-gradient-to-r from-sky-600 via-indigo-600 to-purple-600 hover:from-sky-500 hover:to-purple-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-md cursor-pointer shrink-0"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Mở Popup Báo Cáo & In Ấn Nhanh</span>
+          </button>
+        )}
+      </div>
+
+      {/* Quick Word & Print Toolbar */}
+      <div className="bg-gradient-to-r from-sky-50 via-indigo-50 to-purple-50 dark:from-slate-900 dark:to-slate-850 p-4 sm:p-5 rounded-2xl border border-sky-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-xl bg-sky-600 text-white flex items-center justify-center font-bold">
+            <FileDown className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-xs font-bold text-slate-900 dark:text-white">
+              Tải Nhanh File Microsoft Word (.doc) Cho Giải Đấu
+            </div>
+            <div className="text-[11px] text-slate-500 dark:text-slate-400">
+              Biểu mẫu hành chính thể thao học đường chuẩn: có quốc hiệu, đơn vị trường học và chữ ký
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={handleExportWordStandings}
+            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+          >
+            <FileDown className="w-3.5 h-3.5" />
+            <span>Bảng Xếp Hạng (.doc)</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleExportWordSchedule}
+            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+          >
+            <FileDown className="w-3.5 h-3.5" />
+            <span>Lịch Thi Đấu (.doc)</span>
+          </button>
+          <button
+            type="button"
+            onClick={handleExportWordMinutes}
+            className="px-3.5 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+          >
+            <FileDown className="w-3.5 h-3.5" />
+            <span>Biên Bản Trận (.doc)</span>
+          </button>
         </div>
       </div>
 

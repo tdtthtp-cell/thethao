@@ -49,6 +49,7 @@ import { AthleteModal } from './components/AthleteModal';
 import { SportModal } from './components/SportModal';
 import { MatchEditModal } from './components/MatchEditModal';
 import { MatchMinutesModal } from './components/MatchMinutesModal';
+import { ReportsModal } from './components/ReportsModal';
 
 import { TabOverview } from './components/TabOverview';
 import { TabAthletes } from './components/TabAthletes';
@@ -86,6 +87,7 @@ export default function App() {
   const [editingMatch, setEditingMatch] = useState<Match | null>(null);
   const [isMinutesModalOpen, setIsMinutesModalOpen] = useState(false);
   const [selectedMinutesMatch, setSelectedMinutesMatch] = useState<Match | null>(null);
+  const [isReportsModalOpen, setIsReportsModalOpen] = useState(false);
 
   // 1. Initial State Load
   useEffect(() => {
@@ -637,6 +639,14 @@ export default function App() {
 
   const unreadNotifCount = notifications.filter((n) => !n.read).length;
 
+  const handleTabChange = useCallback((tabId: string) => {
+    if (tabId === 'reports') {
+      setIsReportsModalOpen(true);
+      return;
+    }
+    setActiveTab(tabId);
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
       {/* Offline Toast Banner */}
@@ -647,7 +657,8 @@ export default function App() {
         config={config}
         user={currentUser}
         activeTab={activeTab}
-        onTabChange={setActiveTab}
+        onTabChange={handleTabChange}
+        onOpenReports={() => setIsReportsModalOpen(true)}
         onOpenAuth={() => setIsAuthOpen(true)}
         onOpenNotifications={() => setIsNotifDrawerOpen(true)}
         unreadNotificationsCount={unreadNotifCount}
@@ -744,6 +755,7 @@ export default function App() {
             athletes={athletes}
             matches={matches}
             standingsByGroup={standingsByGroup}
+            onOpenReportsModal={() => setIsReportsModalOpen(true)}
             onRestoreState={(restored) => {
               const res = restored as {
                 config?: TournamentConfig;
@@ -795,7 +807,11 @@ export default function App() {
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <MobileNav activeTab={activeTab} onTabChange={setActiveTab} />
+      <MobileNav
+        activeTab={activeTab}
+        onTabChange={handleTabChange}
+        onOpenReports={() => setIsReportsModalOpen(true)}
+      />
 
       {/* MODALS */}
       {/* 1. Auth & Role Switcher Modal */}
@@ -857,6 +873,41 @@ export default function App() {
         config={config}
         isOpen={isMinutesModalOpen}
         onClose={() => setIsMinutesModalOpen(false)}
+      />
+
+      {/* 7. Consolidated Reports & Export Modal (Báo Cáo, In Ấn & Xuất File Toàn Diện) */}
+      <ReportsModal
+        isOpen={isReportsModalOpen}
+        onClose={() => setIsReportsModalOpen(false)}
+        config={config}
+        teams={teams}
+        athletes={athletes}
+        matches={matches}
+        standingsByGroup={standingsByGroup}
+        onRestoreState={(restored) => {
+          const res = restored as {
+            config?: TournamentConfig;
+            teams?: Team[];
+            athletes?: Athlete[];
+            matches?: Match[];
+          };
+          if (res.config) {
+            setConfig(res.config);
+            syncConfigToFirestore(res.config);
+          }
+          if (res.teams) {
+            setTeams(res.teams);
+            res.teams.forEach((t) => syncTeamToFirestore(t));
+          }
+          if (res.athletes) {
+            setAthletes(res.athletes);
+            res.athletes.forEach((a) => syncAthleteToFirestore(a));
+          }
+          if (res.matches) {
+            setMatches(res.matches);
+            syncAllMatchesToFirestore(res.matches);
+          }
+        }}
       />
     </div>
   );

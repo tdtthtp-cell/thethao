@@ -170,13 +170,7 @@ export function loadTournamentState() {
 
       const rawUsers: UserAccount[] = Array.isArray(parsed.users) ? parsed.users : [];
       const cleanUsers = rawUsers
-        .filter(
-          (u) =>
-            !LEGACY_MOCK_USER_IDS.has(u.id) &&
-            u.username !== 'referee' &&
-            u.username !== 'thuky1' &&
-            u.username !== 'captain10a1'
-        )
+        .filter((u) => !LEGACY_MOCK_USER_IDS.has(u.id))
         .map((u: UserAccount) =>
           u.username === 'admin' ? { ...u, displayName: 'admin' } : u
         );
