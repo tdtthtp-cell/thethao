@@ -18,9 +18,13 @@ import {
   CheckSquare,
   Square,
   LogIn,
+  FileSpreadsheet,
+  Download,
 } from 'lucide-react';
-import { Athlete, Team, TournamentConfig, UserProfile } from '../types';
+import { Athlete, Team, TeamGender, TournamentConfig, UserProfile } from '../types';
 import { decryptText, maskSensitive } from '../services/crypto';
+import { TeamExcelImportModal } from './TeamExcelImportModal';
+import { downloadTeamImportTemplateExcel } from '../services/teamImport';
 
 interface TabAthletesProps {
   athletes: Athlete[];
@@ -33,6 +37,7 @@ interface TabAthletesProps {
   onDeleteAthlete: (athleteId: string) => void;
   onDeleteMultipleAthletes?: (athleteIds: string[]) => void;
   onSaveTeam: (team: Team) => void;
+  onImportMultipleTeams?: (teams: Team[], newGroupsToAdd?: string[]) => void;
   onDeleteTeam: (teamId: string) => void;
   onDeleteMultipleTeams?: (teamIds: string[], deleteAthletesToo?: boolean) => void;
   onApproveAthlete: (athleteId: string, status: Athlete['status']) => void;
@@ -50,6 +55,7 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
   onDeleteAthlete,
   onDeleteMultipleAthletes,
   onSaveTeam,
+  onImportMultipleTeams,
   onDeleteTeam,
   onDeleteMultipleTeams,
   onApproveAthlete,
@@ -58,7 +64,11 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
   const [viewMode, setViewMode] = useState<'athletes' | 'teams'>('athletes');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<string>('ALL');
+  const [selectedGender, setSelectedGender] = useState<'ALL' | TeamGender>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
+
+  // Excel team import modal state
+  const [isExcelImportModalOpen, setIsExcelImportModalOpen] = useState(false);
 
   // Bulk selection state
   const [selectedAthleteIds, setSelectedAthleteIds] = useState<string[]>([]);
@@ -71,10 +81,12 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
   const [revealedIds, setRevealedIds] = useState<Record<string, { idCard: string; phone: string }>>({});
   const [isDecrypting, setIsDecrypting] = useState<string | null>(null);
 
-  // New team modal / inline form state
+  // New & Edit team modal state
   const [isAddingTeam, setIsAddingTeam] = useState(false);
+  const [editingTeam, setEditingTeam] = useState<Team | null>(null);
   const [newTeamName, setNewTeamName] = useState('');
   const [newTeamGroup, setNewTeamGroup] = useState(config.customGroups[0] || 'Khối 10');
+  const [newTeamGender, setNewTeamGender] = useState<TeamGender>('male');
   const [newTeamCoach, setNewTeamCoach] = useState('');
   const [newTeamColor, setNewTeamColor] = useState('#0284c7');
 
@@ -109,18 +121,40 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
     }
   };
 
+  const handleOpenAddTeam = () => {
+    setEditingTeam(null);
+    setNewTeamName('');
+    setNewTeamGroup(config.customGroups[0] || 'Khối 10');
+    setNewTeamGender('male');
+    setNewTeamCoach('');
+    setNewTeamColor('#0284c7');
+    setIsAddingTeam(true);
+  };
+
+  const handleOpenEditTeam = (team: Team) => {
+    setEditingTeam(team);
+    setNewTeamName(team.name);
+    setNewTeamGroup(team.group);
+    setNewTeamGender((team.gender as TeamGender) || 'male');
+    setNewTeamCoach(team.coachName || '');
+    setNewTeamColor(team.color || (team.gender === 'female' ? '#e11d48' : '#0284c7'));
+    setIsAddingTeam(true);
+  };
+
   const handleAddTeamSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTeamName.trim()) return alert('Vui lòng nhập tên đội / lớp thi đấu!');
 
-    const newTeam: Team = {
-      id: 'T_' + Date.now(),
+    const teamToSave: Team = {
+      id: editingTeam ? editingTeam.id : 'T_' + Date.now(),
       name: newTeamName.trim(),
       group: newTeamGroup,
+      gender: newTeamGender,
       coachName: newTeamCoach.trim() || 'Giáo viên phụ trách',
       color: newTeamColor,
     };
-    onSaveTeam(newTeam);
+    onSaveTeam(teamToSave);
+    setEditingTeam(null);
     setNewTeamName('');
     setNewTeamCoach('');
     setIsAddingTeam(false);
@@ -143,13 +177,25 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
   const filteredTeams = useMemo(() => {
     return teams.filter((t) => {
       const matchGroup = selectedGroup === 'ALL' || t.group === selectedGroup;
+      const matchGender =
+        selectedGender === 'ALL' ||
+        (selectedGender === 'male' && (!t.gender || t.gender === 'male')) ||
+        t.gender === selectedGender;
       const matchSearch =
         !searchQuery.trim() ||
         t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (t.coachName && t.coachName.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchGroup && matchSearch;
+      return matchGroup && matchGender && matchSearch;
     });
-  }, [teams, selectedGroup, searchQuery]);
+  }, [teams, selectedGroup, selectedGender, searchQuery]);
+
+  const teamStats = useMemo(() => {
+    const total = teams.length;
+    const male = teams.filter((t) => !t.gender || t.gender === 'male').length;
+    const female = teams.filter((t) => t.gender === 'female').length;
+    const mixed = teams.filter((t) => t.gender === 'mixed').length;
+    return { total, male, female, mixed };
+  }, [teams]);
 
   // Athletes selection helpers
   const handleToggleAthlete = (id: string) => {
@@ -269,9 +315,32 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
             </button>
           </div>
 
+          {viewMode === 'teams' && canRegister && (
+            <>
+              <button
+                type="button"
+                onClick={() => setIsExcelImportModalOpen(true)}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+                title="Nhập danh sách đội từ file Excel (.xlsx, .xls, .csv) có phân biệt nam, nữ theo bảng/khối"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Nhập Đội Excel</span>
+              </button>
+              <button
+                type="button"
+                onClick={downloadTeamImportTemplateExcel}
+                className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer border border-slate-200 dark:border-slate-700"
+                title="Tải file Excel mẫu phân loại Nam/Nữ theo khối, bảng"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Tải File Mẫu</span>
+              </button>
+            </>
+          )}
+
           {canRegister ? (
             <button
-              onClick={viewMode === 'athletes' ? onOpenAddAthlete : () => setIsAddingTeam(true)}
+              onClick={viewMode === 'athletes' ? onOpenAddAthlete : handleOpenAddTeam}
               className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
             >
               <UserPlus className="w-3.5 h-3.5" />
@@ -373,6 +442,23 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
             ))}
           </select>
         </div>
+
+        {/* Gender Filter for Teams */}
+        {viewMode === 'teams' && (
+          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+            <span>Giới tính:</span>
+            <select
+              value={selectedGender}
+              onChange={(e) => setSelectedGender(e.target.value as 'ALL' | TeamGender)}
+              className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-semibold"
+            >
+              <option value="ALL">Tất cả giới tính ({teamStats.total})</option>
+              <option value="male">👦 Đội Nam ({teamStats.male})</option>
+              <option value="female">👧 Đội Nữ ({teamStats.female})</option>
+              {teamStats.mixed > 0 && <option value="mixed">👥 Hỗn Hợp ({teamStats.mixed})</option>}
+            </select>
+          </div>
+        )}
 
         {/* Status Filter for Athletes */}
         {viewMode === 'athletes' && (
@@ -657,24 +743,41 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
       {viewMode === 'teams' && (
         <div className="space-y-4">
           {filteredTeams.length === 0 ? (
-            <div className="bg-white dark:bg-slate-900 p-12 text-center rounded-3xl border border-slate-200/80 dark:border-slate-800 text-slate-400 text-xs space-y-3">
+            <div className="bg-white dark:bg-slate-900 p-10 text-center rounded-3xl border border-slate-200/80 dark:border-slate-800 text-slate-400 text-xs space-y-3">
               <Users className="w-10 h-10 text-slate-300 dark:text-slate-600 mx-auto" />
               <p className="font-bold text-slate-800 dark:text-slate-200 text-sm">
-                Chưa có đội thi đấu nào được đăng ký
+                Chưa tìm thấy đội thi đấu nào phù hợp bộ lọc
               </p>
               <p className="text-slate-400 text-xs max-w-md mx-auto leading-relaxed">
-                Hệ thống không sử dụng dữ liệu mẫu. Ban tổ chức vui lòng nhấn nút bên dưới để bắt
-                đầu đăng ký các đội / lớp thi đấu cho giải.
+                Bạn có thể thêm đội bóng thủ công từng đội, hoặc tải file Excel mẫu để nhập toàn bộ danh sách đội Nam, đội Nữ theo bảng/khối.
               </p>
               {canRegister && (
-                <button
-                  type="button"
-                  onClick={() => setIsAddingTeam(true)}
-                  className="px-4 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition inline-flex items-center gap-1.5 shadow-xs cursor-pointer mt-1"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Thêm Đội / Lớp Thi Đấu Đầu Tiên</span>
-                </button>
+                <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleOpenAddTeam}
+                    className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Thêm Đội Thủ Công</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsExcelImportModalOpen(true)}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition inline-flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5" />
+                    <span>Nhập Đội Từ Excel</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={downloadTeamImportTemplateExcel}
+                    className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition inline-flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700"
+                  >
+                    <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                    <span>Tải File Mẫu (.xlsx)</span>
+                  </button>
+                </div>
               )}
             </div>
           ) : (
@@ -699,13 +802,31 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => handleToggleTeam(team.id)}
-                          className="w-4 h-4 mt-0.5 rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
-                          title="Chọn đội này để xóa hàng loạt"
+                          className="w-4 h-4 mt-1 rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
+                          title="Chọn đội này để thao tác"
                         />
                         <div>
-                          <span className="text-[10px] uppercase font-bold text-sky-600 dark:text-sky-400">
-                            {team.group}
-                          </span>
+                          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                            <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400">
+                              {team.group}
+                            </span>
+                            {team.gender === 'female' ? (
+                              <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-200 dark:border-rose-800 flex items-center gap-0.5">
+                                <span>👧</span>
+                                <span>Nữ</span>
+                              </span>
+                            ) : team.gender === 'mixed' ? (
+                              <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center gap-0.5">
+                                <span>👥</span>
+                                <span>Hỗn hợp</span>
+                              </span>
+                            ) : (
+                              <span className="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-sky-50 text-sky-700 dark:bg-sky-950/80 dark:text-sky-300 border border-sky-200 dark:border-sky-800 flex items-center gap-0.5">
+                                <span>👦</span>
+                                <span>Nam</span>
+                              </span>
+                            )}
+                          </div>
                           <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
                             {team.name}
                           </h3>
@@ -715,8 +836,9 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
                         </div>
                       </div>
                       <div
-                        className="w-4 h-4 rounded-full border border-white dark:border-slate-900 shadow-xs shrink-0"
-                        style={{ backgroundColor: team.color || '#0284c7' }}
+                        className="w-4 h-4 rounded-full border border-white dark:border-slate-900 shadow-xs shrink-0 mt-1"
+                        style={{ backgroundColor: team.color || (team.gender === 'female' ? '#e11d48' : '#0284c7') }}
+                        title={`Màu áo: ${team.color || 'Mặc định'}`}
                       />
                     </div>
 
@@ -737,15 +859,29 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
                       >
                         Xem danh sách VĐV
                       </button>
-                      {isAdmin && (
-                        <button
-                          onClick={() => onDeleteTeam(team.id)}
-                          className="text-xs text-rose-500 hover:text-rose-700 p-1 cursor-pointer"
-                          title="Xóa đội bóng này"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+
+                      <div className="flex items-center gap-1.5">
+                        {canRegister && (
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditTeam(team)}
+                            className="p-1 text-slate-400 hover:text-sky-600 rounded transition cursor-pointer"
+                            title="Sửa thông tin đội"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {isAdmin && (
+                          <button
+                            type="button"
+                            onClick={() => onDeleteTeam(team.id)}
+                            className="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
+                            title="Xóa đội bóng này"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -937,14 +1073,28 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
         </div>
       )}
 
-      {/* Add Team Modal */}
+      {/* Add / Edit Team Modal */}
       {isAddingTeam && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
           <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
-            <h3 className="font-bold text-base text-slate-900 dark:text-white">
-              Thêm Đội / Lớp Thi Đấu Mới
-            </h3>
-            <form onSubmit={handleAddTeamSubmit} className="space-y-3">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="font-extrabold text-base text-slate-900 dark:text-white flex items-center gap-2">
+                <Users className="w-4 h-4 text-sky-600" />
+                <span>{editingTeam ? 'Chỉnh Sửa Thông Tin Đội' : 'Thêm Đội / Lớp Thi Đấu Mới'}</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAddingTeam(false);
+                  setEditingTeam(null);
+                }}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddTeamSubmit} className="space-y-3.5">
               <div>
                 <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
                   Tên Đội / Lớp *
@@ -954,8 +1104,8 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
                   required
                   value={newTeamName}
                   onChange={(e) => setNewTeamName(e.target.value)}
-                  placeholder="Ví dụ: Lớp 10A4"
-                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
+                  placeholder="Ví dụ: 10A1, 10A2, 11B1, 12C2,5..."
+                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-sky-500"
                 />
               </div>
 
@@ -966,7 +1116,7 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
                 <select
                   value={newTeamGroup}
                   onChange={(e) => setNewTeamGroup(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-sky-500"
                 >
                   {config.customGroups.map((g) => (
                     <option key={g} value={g}>
@@ -974,6 +1124,62 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Gender Selection */}
+              <div>
+                <label className="block text-xs font-semibold uppercase text-slate-500 mb-1.5">
+                  Phân Loại Giới Tính *
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewTeamGender('male');
+                      if (newTeamColor === '#e11d48' || newTeamColor === '#7c3aed') setNewTeamColor('#0284c7');
+                    }}
+                    className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      newTeamGender === 'male'
+                        ? 'bg-sky-50 dark:bg-sky-950 text-sky-700 dark:text-sky-300 border-sky-300 dark:border-sky-700 ring-2 ring-sky-500/20'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <span>👦</span>
+                    <span>Đội Nam</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewTeamGender('female');
+                      if (newTeamColor === '#0284c7' || newTeamColor === '#7c3aed') setNewTeamColor('#e11d48');
+                    }}
+                    className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      newTeamGender === 'female'
+                        ? 'bg-rose-50 dark:bg-rose-950 text-rose-700 dark:text-rose-300 border-rose-300 dark:border-rose-700 ring-2 ring-rose-500/20'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <span>👧</span>
+                    <span>Đội Nữ</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewTeamGender('mixed');
+                      if (newTeamColor === '#0284c7' || newTeamColor === '#e11d48') setNewTeamColor('#7c3aed');
+                    }}
+                    className={`py-2 px-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      newTeamGender === 'mixed'
+                        ? 'bg-purple-50 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border-purple-300 dark:border-purple-700 ring-2 ring-purple-500/20'
+                        : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <span>👥</span>
+                    <span>Hỗn Hợp</span>
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -985,29 +1191,47 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
                   value={newTeamCoach}
                   onChange={(e) => setNewTeamCoach(e.target.value)}
                   placeholder="Ví dụ: Thầy Hoàng (GVCN)"
-                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-sky-500"
                 />
               </div>
 
               <div className="pt-2 flex justify-end gap-2">
                 <button
                   type="button"
-                  onClick={() => setIsAddingTeam(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 rounded-xl cursor-pointer"
+                  onClick={() => {
+                    setIsAddingTeam(false);
+                    setEditingTeam(null);
+                  }}
+                  className="px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl cursor-pointer"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 bg-sky-600 text-white rounded-xl text-xs font-bold hover:bg-sky-500 cursor-pointer"
+                  className="px-4 py-2 bg-sky-600 text-white rounded-xl text-xs font-bold hover:bg-sky-500 shadow-xs cursor-pointer"
                 >
-                  Tạo Đội Mới
+                  {editingTeam ? 'Lưu Thay Đổi' : 'Tạo Đội Mới'}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* Excel Team Import Modal */}
+      <TeamExcelImportModal
+        isOpen={isExcelImportModalOpen}
+        onClose={() => setIsExcelImportModalOpen(false)}
+        config={config}
+        existingTeams={teams}
+        onImportTeams={(newTeams, newGroupsToAdd) => {
+          if (onImportMultipleTeams) {
+            onImportMultipleTeams(newTeams, newGroupsToAdd);
+          } else {
+            newTeams.forEach((t) => onSaveTeam(t));
+          }
+        }}
+      />
     </div>
   );
 };

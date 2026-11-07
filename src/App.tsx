@@ -27,6 +27,7 @@ import {
   syncConfigToFirestore,
   syncSportToFirestore,
   syncTeamToFirestore,
+  syncMultipleTeamsToFirestore,
   deleteTeamFromFirestore,
   deleteMultipleTeamsFromFirestore,
   syncAthleteToFirestore,
@@ -553,6 +554,57 @@ export default function App() {
     broadcastTournamentUpdate('TEAMS_UPDATED', { teamId: team.id });
   };
 
+  const handleImportMultipleTeams = (incomingTeams: Team[], newGroupsToAdd?: string[]) => {
+    if (incomingTeams.length === 0) return;
+
+    // 1. Update config if new groups discovered in Excel
+    if (newGroupsToAdd && newGroupsToAdd.length > 0) {
+      const updatedGroups = Array.from(new Set([...config.customGroups, ...newGroupsToAdd]));
+      const newConfig = { ...config, customGroups: updatedGroups };
+      setConfig(newConfig);
+      syncConfigToFirestore(newConfig);
+    }
+
+    // 2. Merge teams into state
+    setTeams((prev) => {
+      const next = [...prev];
+      incomingTeams.forEach((newT) => {
+        const existingIdx = next.findIndex(
+          (t) =>
+            t.id === newT.id ||
+            (t.name.toLowerCase() === newT.name.toLowerCase() &&
+              t.group === newT.group &&
+              (t.gender || 'male') === (newT.gender || 'male'))
+        );
+        if (existingIdx >= 0) {
+          next[existingIdx] = { ...next[existingIdx], ...newT };
+        } else {
+          next.push(newT);
+        }
+      });
+      return next;
+    });
+
+    // 3. Batch sync to Firestore
+    syncMultipleTeamsToFirestore(incomingTeams);
+
+    // 4. Realtime broadcast notification
+    broadcastTournamentUpdate('TEAMS_UPDATED', { importedCount: incomingTeams.length });
+
+    // 5. In-app notification
+    const maleCount = incomingTeams.filter((t) => t.gender === 'male').length;
+    const femaleCount = incomingTeams.filter((t) => t.gender === 'female').length;
+    const notif: NotificationItem = {
+      id: 'N_' + Date.now(),
+      type: 'system',
+      title: 'Nhập danh sách đội từ Excel thành công',
+      message: `Đã nhập thành công ${incomingTeams.length} đội (${maleCount} đội Nam, ${femaleCount} đội Nữ) theo bảng/khối.`,
+      timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+      read: false,
+    };
+    setNotifications((prev) => [notif, ...prev]);
+  };
+
   const handleDeleteTeam = (teamId: string) => {
     if (!confirm('Bạn có chắc muốn xóa đội này cùng các VĐV liên quan?')) return;
     setTeams((prev) => prev.filter((t) => t.id !== teamId));
@@ -705,6 +757,7 @@ export default function App() {
             onDeleteAthlete={handleDeleteAthlete}
             onDeleteMultipleAthletes={handleDeleteMultipleAthletes}
             onSaveTeam={handleSaveTeam}
+            onImportMultipleTeams={handleImportMultipleTeams}
             onDeleteTeam={handleDeleteTeam}
             onDeleteMultipleTeams={handleDeleteMultipleTeams}
             onApproveAthlete={handleApproveAthlete}

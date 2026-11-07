@@ -231,6 +231,19 @@ export async function syncTeamToFirestore(team: Team) {
   }
 }
 
+export async function syncMultipleTeamsToFirestore(teams: Team[]) {
+  if (!teams || teams.length === 0) return;
+  try {
+    const batch = writeBatch(db);
+    teams.forEach((t) => {
+      batch.set(doc(db, TEAMS_COL, t.id), t);
+    });
+    await batch.commit();
+  } catch (err) {
+    console.warn('Error syncing multiple teams to Firestore:', err);
+  }
+}
+
 export async function deleteTeamFromFirestore(teamId: string, deleteAthletesToo = true, allAthletes: Athlete[] = []) {
   try {
     const batch = writeBatch(db);

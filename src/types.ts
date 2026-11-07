@@ -58,10 +58,13 @@ export type PointScheme = 'standard' | 'custom';
 
 export type MatchStatus = 'UPCOMING' | 'LIVE' | 'FINISHED';
 
+export type TeamGender = 'male' | 'female' | 'mixed';
+
 export interface Team {
   id: string;
   name: string;
   group: string;
+  gender?: TeamGender | string;
   coachName?: string;
   contactPhone?: string;
   color?: string;
