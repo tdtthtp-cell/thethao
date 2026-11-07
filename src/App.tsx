@@ -53,6 +53,7 @@ import { MatchMinutesModal } from './components/MatchMinutesModal';
 import { ReportsModal } from './components/ReportsModal';
 
 import { TabOverview } from './components/TabOverview';
+import { TabTeams } from './components/TabTeams';
 import { TabAthletes } from './components/TabAthletes';
 import { TabMatches } from './components/TabMatches';
 import { TabStandings } from './components/TabStandings';
@@ -73,6 +74,7 @@ export default function App() {
 
   // Navigation & session state
   const [activeTab, setActiveTab] = useState<string>('overview');
+  const [athleteTeamFilter, setAthleteTeamFilter] = useState<string>('ALL');
   const [isDark, setIsDark] = useState<boolean>(false);
   const [currentUser, setCurrentUser] = useState<UserProfile>(DEFAULT_GUEST_USER);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'connecting' | 'error'>('connecting');
@@ -381,8 +383,8 @@ export default function App() {
 
       // Strictly require at least 2 teams entered by BTC
       if (effectiveTeams.length < 2) {
-        alert('Chưa có đủ danh sách đội thi đấu (yêu cầu tối thiểu 2 đội). Ban tổ chức vui lòng nhập danh sách đội tại mục "Đăng Ký VĐV / Đội" trước khi xếp lịch!');
-        setActiveTab('athletes');
+        alert('Chưa có đủ danh sách đội thi đấu (yêu cầu tối thiểu 2 đội). Ban tổ chức vui lòng nhập danh sách các lớp/đội (10A1, 10A2...) tại mục "Danh Sách Đội" trước khi xếp lịch!');
+        setActiveTab('teams');
         return;
       }
 
@@ -739,12 +741,60 @@ export default function App() {
           />
         )}
 
+        {activeTab === 'teams' && (
+          <TabTeams
+            teams={teams}
+            athletes={athletes}
+            config={config}
+            user={currentUser}
+            onOpenLogin={() => setIsAuthOpen(true)}
+            onSaveTeam={handleSaveTeam}
+            onImportMultipleTeams={handleImportMultipleTeams}
+            onDeleteTeam={handleDeleteTeam}
+            onDeleteMultipleTeams={handleDeleteMultipleTeams}
+            onNavigateToAthletes={(teamNameOrId) => {
+              if (teamNameOrId) {
+                const found = teams.find(
+                  (t) => t.name.toLowerCase() === teamNameOrId.toLowerCase() || t.id === teamNameOrId
+                );
+                setAthleteTeamFilter(found ? found.id : teamNameOrId);
+              } else {
+                setAthleteTeamFilter('ALL');
+              }
+              setActiveTab('athletes');
+            }}
+            onAddAthleteForTeam={(team) => {
+              setEditingAthlete({
+                id: '',
+                name: '',
+                teamId: team.id,
+                teamName: team.name,
+                group: team.group,
+                jerseyNumber: 10,
+                position: 'Tiền đạo / Chủ công',
+                dateOfBirth: '2010-01-01',
+                nationalIdEncrypted: '',
+                phoneEncrypted: '',
+                status: currentUser.role === 'admin' ? 'approved' : 'pending',
+                registeredAt: new Date().toISOString().slice(0, 10),
+                goalsOrPoints: 0,
+                yellowCards: 0,
+                redCards: 0,
+                mvpCount: 0,
+              });
+              setIsAthleteModalOpen(true);
+            }}
+          />
+        )}
+
         {activeTab === 'athletes' && (
           <TabAthletes
             athletes={athletes}
             teams={teams}
             config={config}
             user={currentUser}
+            initialTeamFilter={athleteTeamFilter}
+            onNavigateToTeams={() => setActiveTab('teams')}
             onOpenLogin={() => setIsAuthOpen(true)}
             onOpenAddAthlete={() => {
               setEditingAthlete(null);
@@ -756,10 +806,6 @@ export default function App() {
             }}
             onDeleteAthlete={handleDeleteAthlete}
             onDeleteMultipleAthletes={handleDeleteMultipleAthletes}
-            onSaveTeam={handleSaveTeam}
-            onImportMultipleTeams={handleImportMultipleTeams}
-            onDeleteTeam={handleDeleteTeam}
-            onDeleteMultipleTeams={handleDeleteMultipleTeams}
             onApproveAthlete={handleApproveAthlete}
             onApproveMultipleAthletes={handleApproveMultipleAthletes}
           />

@@ -90,7 +90,8 @@ export const Header: React.FC<HeaderProps> = ({
 
   const navLinks = [
     { id: 'overview', label: 'Tổng Quan', icon: LayoutDashboard },
-    { id: 'athletes', label: 'Đăng Ký VĐV/Đội', icon: Users },
+    { id: 'teams', label: 'Danh Sách Đội', icon: Shield },
+    { id: 'athletes', label: 'Vận Động Viên', icon: Users },
     { id: 'matches', label: 'Lịch Đấu & Tỉ Số', icon: Calendar },
     { id: 'standings', label: 'Bảng Xếp Hạng', icon: BarChart3 },
     { id: 'reports', label: 'Báo Cáo & Xuất File', icon: FileText },
@@ -240,14 +241,14 @@ export const Header: React.FC<HeaderProps> = ({
               {user.role === 'viewer' ? (
                 <>
                   <GoogleIcon />
-                  <span className="hidden sm:inline">Đăng Nhập Google / BTC</span>
-                  <span className="sm:hidden">Đăng Nhập</span>
+                  <span className="hidden sm:inline">Đăng Nhập Gmail (Xác Nhận)</span>
+                  <span className="sm:hidden">Gmail</span>
                 </>
               ) : user.authProvider === 'google' ? (
                 <>
                   <GoogleIcon />
-                  <span className="hidden sm:inline">{user.displayName}</span>
-                  <span className="sm:hidden">Google</span>
+                  <span className="hidden sm:inline">Gmail: {user.displayName}</span>
+                  <span className="sm:hidden">Gmail</span>
                 </>
               ) : user.role === 'admin' ? (
                 <>

@@ -246,8 +246,8 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
 
   const handleAddNewManualMatch = () => {
     if (teams.length < 2) {
-      alert('Chưa có đủ danh sách đội thi đấu (cần ít nhất 2 đội). Ban tổ chức vui lòng đăng ký danh sách đội tại mục "Đăng Ký VĐV / Đội" trước khi tạo trận đấu!');
-      onNavigateTab?.('athletes');
+      alert('Chưa có đủ danh sách đội thi đấu (cần ít nhất 2 đội). Ban tổ chức vui lòng thêm danh sách các lớp/đội (10A1, 10A2...) tại mục "Danh Sách Đội" trước khi tạo trận đấu!');
+      onNavigateTab?.('teams');
       return;
     }
 
