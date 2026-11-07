@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { X, Printer, FileDown, Trophy } from 'lucide-react';
 import { Match, TournamentConfig } from '../types';
-import { exportMatchMinutesToWord } from '../services/export';
+import { exportMatchMinutesToWord, calculateMatchMinutesPoints } from '../services/export';
 
 interface MatchMinutesModalProps {
   match: Match | null;
@@ -16,31 +16,28 @@ export const MatchMinutesModal: React.FC<MatchMinutesModalProps> = ({
   isOpen,
   onClose,
 }) => {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen || !match) return null;
 
   const isFootball = config.activeSportId === 'football';
-  const maxSets = config.matchSetsRule || 3;
 
-  let winnerName = 'HÒA';
-  let homeSetsWon = 0;
-  let awaySetsWon = 0;
+  const refereeName = match.refereeName || config.referee || 'Bồ Công Lâm';
+  const secretaryName = match.secretaryName || config.secretary || 'Trần Thị Thu Hồng';
 
-  if (isFootball) {
-    if (match.scores.set1.home > match.scores.set1.away) winnerName = match.home.name;
-    else if (match.scores.set1.away > match.scores.set1.home) winnerName = match.away.name;
-    else if (match.scores.pen.played) {
-      if (match.scores.pen.home > match.scores.pen.away) winnerName = `${match.home.name} (Thắng luân lưu)`;
-      else if (match.scores.pen.away > match.scores.pen.home) winnerName = `${match.away.name} (Thắng luân lưu)`;
-    }
-  } else {
-    for (let s = 1; s <= maxSets; s++) {
-      const sc = match.scores[`set${s}` as keyof typeof match.scores] as { home: number; away: number };
-      if (sc && sc.home > sc.away) homeSetsWon++;
-      else if (sc && sc.away > sc.home) awaySetsWon++;
-    }
-    if (homeSetsWon > awaySetsWon) winnerName = match.home.name;
-    else if (awaySetsWon > homeSetsWon) winnerName = match.away.name;
-  }
+  const calc = calculateMatchMinutesPoints(match, config);
+  const homeResultDisplay = `${calc.homeTournamentPts} điểm`;
+  const awayResultDisplay = `${calc.awayTournamentPts} điểm`;
+  const winnerName = calc.winnerName;
+  const loserName = calc.loserName;
 
   const handlePrint = () => {
     window.print();
@@ -51,10 +48,15 @@ export const MatchMinutesModal: React.FC<MatchMinutesModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 overflow-y-auto">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 overflow-y-auto"
+    >
       <div className="w-full max-w-3xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 space-y-6 my-6">
         {/* Header Action Bar */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 no-print">
+        <div className="flex flex-wrap items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 gap-2 no-print">
           <div className="flex items-center gap-2">
             <Trophy className="w-5 h-5 text-sky-600" />
             <h3 className="font-bold text-base text-slate-900 dark:text-white">
@@ -64,160 +66,222 @@ export const MatchMinutesModal: React.FC<MatchMinutesModalProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={handleExportWord}
-              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="Xuất file Word (.doc) theo đúng mẫu"
             >
               <FileDown className="w-3.5 h-3.5" />
               <span>Xuất Word (.doc)</span>
             </button>
             <button
               onClick={handlePrint}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs"
+              className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="In biên bản thi đấu ra giấy A4 hoặc PDF"
             >
               <Printer className="w-3.5 h-3.5" />
               <span>In Biên Bản</span>
             </button>
             <button
               onClick={onClose}
-              className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              className="px-3.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/50 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+              title="Thoát khỏi biên bản (hoặc nhấn phím Esc)"
             >
-              <X className="w-5 h-5" />
+              <X className="w-3.5 h-3.5" />
+              <span>Thoát</span>
             </button>
           </div>
         </div>
 
-        {/* Printable Official Vietnamese Document Body */}
-        <div className="p-6 sm:p-10 bg-white text-slate-900 border border-slate-200 rounded-2xl space-y-6 shadow-xs font-serif leading-relaxed text-sm">
-          {/* Official Document Header */}
-          <div className="grid grid-cols-2 gap-4 pb-4 border-b border-slate-300 text-center">
+        {/* Printable Official Document Body */}
+        <div className="p-6 sm:p-8 bg-white text-slate-900 border border-slate-200 rounded-2xl space-y-5 shadow-xs font-serif leading-relaxed text-sm">
+          {/* Official Document Header (EXACTLY matching user image) */}
+          <div className="grid grid-cols-2 gap-4 pb-3 border-b border-slate-300 text-center font-serif">
             <div>
-              <p className="font-semibold uppercase tracking-wider text-xs">{config.schoolName}</p>
-              <p className="font-bold text-xs uppercase text-sky-900">{config.deptName}</p>
-              <p className="text-xs">***</p>
+              <p className="font-normal uppercase tracking-wider text-xs sm:text-sm text-slate-800">
+                {config.schoolName || 'TRƯỜNG THPT HUỲNH TẤN PHÁT'}
+              </p>
+              <p className="font-bold text-xs sm:text-sm uppercase text-slate-900 mt-1">
+                <span className="underline decoration-slate-900 underline-offset-4">
+                  {config.deptName || 'BAN TỔ CHỨC HỘI THAO'}
+                </span>
+              </p>
             </div>
             <div>
-              <p className="font-bold text-xs uppercase">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
-              <p className="text-xs italic">Độc lập - Tự do - Hạnh phúc</p>
-              <p className="text-xs">---------------</p>
+              <p className="font-bold text-xs sm:text-sm uppercase text-slate-900">
+                CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+              </p>
+              <p className="font-bold text-xs sm:text-sm text-slate-900 mt-1">
+                <span className="underline decoration-slate-900 underline-offset-4">
+                  Độc lập - Tự do - Hạnh phúc
+                </span>
+              </p>
             </div>
           </div>
 
           {/* Title */}
           <div className="text-center space-y-1">
-            <h2 className="text-xl font-extrabold uppercase tracking-wide text-slate-950">
+            <h2 className="text-lg sm:text-xl font-extrabold uppercase tracking-wide text-slate-950">
               BIÊN BẢN THI ĐẤU THỂ THAO
             </h2>
             <p className="text-xs italic text-slate-600">{config.tournamentName}</p>
-            <p className="text-base font-bold text-sky-800">
-              {match.code}: {match.home.name} — {match.away.name}
+            <p className="text-sm sm:text-base font-bold text-blue-900">
+              {match.code}: {match.home.name} — {match.away.name} ({match.stage})
             </p>
           </div>
 
-          {/* Details list */}
-          <div className="space-y-2 text-xs sm:text-sm">
-            <p><strong>1. Môn thi đấu:</strong> {config.activeSportId.toUpperCase()}</p>
-            <p><strong>2. Thời gian:</strong> {match.time} ngày {match.date || new Date().toLocaleDateString('vi-VN')}</p>
-            <p><strong>3. Địa điểm:</strong> {match.pitch}</p>
-            <p><strong>4. Thành phần điều hành:</strong></p>
-            <ul className="list-disc list-inside pl-4 text-xs space-y-0.5">
-              <li>Trưởng Ban Tổ Chức: {config.organizer}</li>
-              <li>Trọng tài chính: {match.refereeName || config.referee}</li>
-              <li>Thư ký bàn: {match.secretaryName || config.secretary}</li>
-            </ul>
+          {/* Match Meta (EXACTLY matching user image) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs sm:text-sm font-sans py-2 border-y border-slate-100">
+            <div className="space-y-1">
+              <p><strong>Thời gian:</strong> {match.time} ngày {match.date || new Date().toISOString().slice(0, 10)}</p>
+              <p><strong>Sân thi đấu:</strong> {match.pitch}</p>
+            </div>
+            <div className="space-y-1 sm:text-right">
+              <p><strong>Trọng tài chính:</strong> {refereeName}</p>
+              <p><strong>Thư ký bàn:</strong> {secretaryName}</p>
+            </div>
           </div>
 
-          {/* Score Table */}
+          {/* Score Table (EXACTLY matching user image) */}
           <div className="space-y-2">
-            <p className="text-xs sm:text-sm font-bold">5. Kết quả chi tiết các hiệp / set đấu:</p>
             <div className="overflow-x-auto">
-              <table className="w-full text-center border-collapse border border-slate-400 text-xs">
+              <table className="w-full text-center border-collapse border border-slate-300 text-xs sm:text-sm font-sans">
                 <thead>
-                  <tr className="bg-slate-100 font-bold">
-                    <th className="border border-slate-400 p-2 text-left">Đội / Đơn Vị</th>
+                  <tr className="bg-slate-100/90 font-bold text-slate-800">
+                    <th className="border border-slate-300 p-2.5 text-left w-2/5">Đội thi đấu</th>
                     {isFootball ? (
                       <>
-                        <th className="border border-slate-400 p-2">Hiệp Chính</th>
-                        <th className="border border-slate-400 p-2">Sút Luân Lưu</th>
+                        <th className="border border-slate-300 p-2.5">Hiệp chính</th>
+                        <th className="border border-slate-300 p-2.5">Sút luân lưu (Pen)</th>
                       </>
                     ) : (
                       <>
-                        {[1, 2, 3, 4, 5].slice(0, maxSets).map((s) => (
-                          <th key={s} className="border border-slate-400 p-2">Set {s}</th>
-                        ))}
-                        <th className="border border-slate-400 p-2">Tổng Set</th>
+                        <th className="border border-slate-300 p-2.5 w-16">Set 1</th>
+                        <th className="border border-slate-300 p-2.5 w-16">Set 2</th>
+                        <th className="border border-slate-300 p-2.5 w-16">Set 3</th>
                       </>
                     )}
+                    <th className="border border-slate-300 p-2.5 w-1/3">Kết quả chung cuộc</th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr>
-                    <td className="border border-slate-400 p-2 text-left font-bold">{match.home.name}</td>
+                    <td className="border border-slate-300 p-2.5 text-left font-bold">{match.home.name}</td>
                     {isFootball ? (
                       <>
-                        <td className="border border-slate-400 p-2 font-mono font-bold">{match.scores.set1.home}</td>
-                        <td className="border border-slate-400 p-2 font-mono">{match.scores.pen.played ? match.scores.pen.home : '-'}</td>
+                        <td className="border border-slate-300 p-2.5 font-mono">{match.scores.set1.home}</td>
+                        <td className="border border-slate-300 p-2.5 font-mono">{match.scores.pen?.played ? match.scores.pen.home : '-'}</td>
                       </>
                     ) : (
                       <>
-                        {[1, 2, 3, 4, 5].slice(0, maxSets).map((s) => {
-                          const sc = match.scores[`set${s}` as keyof typeof match.scores] as { home: number; away: number };
-                          return <td key={s} className="border border-slate-400 p-2 font-mono">{sc?.home ?? 0}</td>;
-                        })}
-                        <td className="border border-slate-400 p-2 font-bold font-mono text-sky-800">{homeSetsWon}</td>
+                        <td className="border border-slate-300 p-2.5 font-mono">{match.scores.set1.home}</td>
+                        <td className="border border-slate-300 p-2.5 font-mono">{match.scores.set2.home}</td>
+                        <td className="border border-slate-300 p-2.5 font-mono">{match.scores.set3.home}</td>
                       </>
                     )}
+                    <td className="border border-slate-300 p-2.5 font-bold font-mono text-blue-900">{homeResultDisplay}</td>
                   </tr>
                   <tr>
-                    <td className="border border-slate-400 p-2 text-left font-bold">{match.away.name}</td>
+                    <td className="border border-slate-300 p-2.5 text-left font-bold">{match.away.name}</td>
                     {isFootball ? (
                       <>
-                        <td className="border border-slate-400 p-2 font-mono font-bold">{match.scores.set1.away}</td>
-                        <td className="border border-slate-400 p-2 font-mono">{match.scores.pen.played ? match.scores.pen.away : '-'}</td>
+                        <td className="border border-slate-300 p-2.5 font-mono">{match.scores.set1.away}</td>
+                        <td className="border border-slate-300 p-2.5 font-mono">{match.scores.pen?.played ? match.scores.pen.away : '-'}</td>
                       </>
                     ) : (
                       <>
-                        {[1, 2, 3, 4, 5].slice(0, maxSets).map((s) => {
-                          const sc = match.scores[`set${s}` as keyof typeof match.scores] as { home: number; away: number };
-                          return <td key={s} className="border border-slate-400 p-2 font-mono">{sc?.away ?? 0}</td>;
-                        })}
-                        <td className="border border-slate-400 p-2 font-bold font-mono text-sky-800">{awaySetsWon}</td>
+                        <td className="border border-slate-300 p-2.5 font-mono">{match.scores.set1.away}</td>
+                        <td className="border border-slate-300 p-2.5 font-mono">{match.scores.set2.away}</td>
+                        <td className="border border-slate-300 p-2.5 font-mono">{match.scores.set3.away}</td>
                       </>
                     )}
+                    <td className="border border-slate-300 p-2.5 font-bold font-mono text-blue-900">{awayResultDisplay}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
+            <p className="text-xs italic text-slate-600 dark:text-slate-400 font-sans pt-1">
+              {calc.noteText}
+            </p>
           </div>
 
-          {/* Conclusion */}
-          <div className="pt-2 text-xs sm:text-sm">
+          {/* Conclusion (EXACTLY matching user image) */}
+          <div className="pt-2 text-xs sm:text-sm space-y-1 font-serif">
+            <p className="font-bold text-slate-900">Kết luận:</p>
             <p>
-              <strong>6. Kết luận:</strong> Đội thắng cuộc:{' '}
-              <span className="font-extrabold uppercase text-emerald-800 tracking-wider">
-                {winnerName}
+              Đội thắng cuộc:{' '}
+              <span className="font-bold text-emerald-700">
+                {winnerName || '(Chờ kết thúc trận)'}
               </span>
             </p>
-            <p className="italic text-xs text-slate-500 mt-1">
-              Biên bản thi đấu kết thúc vào cùng ngày. Các bên đã đọc, nhất trí hoàn toàn với kết quả và cùng ký tên.
+            <p>
+              Đội thua cuộc:{' '}
+              <span className="font-bold text-rose-600">
+                {loserName || '(Xác định sau khi kết thúc trận)'}
+              </span>
+            </p>
+            <p className="italic text-xs text-slate-600 pt-1">
+              Biên bản thi đấu kết thúc vào cùng ngày. Các bên đã đọc, xác nhận kết quả chính xác và nhất trí ký tên dưới đây.
             </p>
           </div>
 
-          {/* Signature Block */}
-          <div className="grid grid-cols-3 gap-4 pt-10 text-center text-xs font-bold">
+          {/* Signature Block (EXACTLY matching user image: Trọng tài chính, Thư ký bàn, Đại diện đội bóng (tên đội thua)) */}
+          <div className="grid grid-cols-3 gap-3 pt-6 text-center text-xs font-serif">
             <div>
-              <p>TRƯỞNG BAN TỔ CHỨC</p>
+              <p className="font-bold uppercase text-slate-900">TRỌNG TÀI CHÍNH</p>
+              <p className="italic text-[11px] text-slate-500 mt-0.5">(Ký và ghi rõ họ tên)</p>
               <div className="h-16" />
-              <p className="font-normal">{config.organizer}</p>
+              <p className="font-bold text-slate-900">{refereeName}</p>
             </div>
             <div>
-              <p>TRỌNG TÀI CHÍNH</p>
+              <p className="font-bold uppercase text-slate-900">THƯ KÝ BÀN</p>
+              <p className="italic text-[11px] text-slate-500 mt-0.5">(Ký và ghi rõ họ tên)</p>
               <div className="h-16" />
-              <p className="font-normal">{match.refereeName || config.referee}</p>
+              <p className="font-bold text-slate-900">{secretaryName}</p>
             </div>
             <div>
-              <p>THƯ KÝ BÀN</p>
+              <p className="font-bold uppercase text-slate-900">ĐẠI DIỆN ĐỘI BÓNG</p>
+              <p className="font-bold text-[11px] text-rose-600 mt-0.5">
+                {loserName ? `(Đội ${loserName} - Đội thua)` : '(Tên đội thua xác định sau trận)'}
+              </p>
+              <p className="italic text-[11px] text-slate-500 mt-0.5">(Ký và ghi rõ họ tên)</p>
               <div className="h-16" />
-              <p className="font-normal">{match.secretaryName || config.secretary}</p>
             </div>
+          </div>
+        </div>
+
+        {/* Bottom Action Footer (no-print) */}
+        <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100 dark:border-slate-800 no-print">
+          <div className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+            Biên bản trận đấu: <span className="font-bold text-slate-700 dark:text-slate-200">{match.code} ({match.home.name} vs {match.away.name})</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleExportWord}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="Tải tệp Word (.doc) về máy"
+            >
+              <FileDown className="w-4 h-4" />
+              <span>Xuất Word (.doc)</span>
+            </button>
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="In biên bản thi đấu ra giấy A4 hoặc PDF"
+            >
+              <Printer className="w-4 h-4" />
+              <span>In Biên Bản</span>
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+              title="Thoát khỏi biên bản"
+            >
+              <X className="w-4 h-4" />
+              <span>Thoát</span>
+            </button>
           </div>
         </div>
       </div>

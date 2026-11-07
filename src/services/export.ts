@@ -124,73 +124,255 @@ export function exportTournamentToExcel(
   XLSX.writeFile(wb, `BaoCao_GiaiDau_${dateStr}.xlsx`);
 }
 
+export interface MatchMinutesPointsResult {
+  homeTournamentPts: number;
+  awayTournamentPts: number;
+  homeSetsWon: number;
+  awaySetsWon: number;
+  homeTotalScore: number;
+  awayTotalScore: number;
+  noteText: string;
+  winnerName: string;
+  loserName: string;
+}
+
+/**
+ * Compute official tournament points (3, 2, 1, 0) and explanatory note
+ * according to sport rules:
+ * - Win 2-0 / 3-0 / 3-1: 3 pts, Loser: 0 pts
+ * - Win 2-1 / 3-2: 2 pts, Loser: 1 pt
+ * - Football regulation win: 3 pts (loser 0)
+ * - Football penalty win: 2 pts (loser 1)
+ * - Football draw: 1 pt each
+ * - Unplayed / 0-0: 0 pts each
+ */
+export function calculateMatchMinutesPoints(
+  match: Match,
+  config: TournamentConfig
+): MatchMinutesPointsResult {
+  const isFootball = config.activeSportId === 'football';
+
+  if (isFootball) {
+    const s1 = match.scores.set1;
+    const pen = match.scores.pen;
+    let homePts = 0;
+    let awayPts = 0;
+    let winnerName = '';
+    let loserName = '';
+
+    const hasPlayed =
+      match.status === 'FINISHED' ||
+      match.status === 'LIVE' ||
+      s1.home > 0 ||
+      s1.away > 0 ||
+      pen?.played;
+
+    if (!hasPlayed) {
+      homePts = 0;
+      awayPts = 0;
+    } else if (s1.home > s1.away) {
+      homePts = 3;
+      awayPts = 0;
+      winnerName = match.home.name;
+      loserName = match.away.name;
+    } else if (s1.away > s1.home) {
+      homePts = 0;
+      awayPts = 3;
+      winnerName = match.away.name;
+      loserName = match.home.name;
+    } else {
+      // Hòa hiệp chính
+      if (pen?.played) {
+        if (pen.home > pen.away) {
+          homePts = 2;
+          awayPts = 1;
+          winnerName = `${match.home.name} (Thắng pen)`;
+          loserName = match.away.name;
+        } else if (pen.away > pen.home) {
+          homePts = 1;
+          awayPts = 2;
+          winnerName = `${match.away.name} (Thắng pen)`;
+          loserName = match.home.name;
+        } else {
+          homePts = 1;
+          awayPts = 1;
+        }
+      } else {
+        homePts = 1;
+        awayPts = 1;
+      }
+    }
+
+    const penInfo = pen?.played ? ` (Luân lưu Pen: ${pen.home} - ${pen.away})` : '';
+    const noteText = `* Ghi chú: Tổng điểm các set (số bàn thắng): ${match.home.name}: ${s1.home} bàn; ${match.away.name}: ${s1.away} bàn${penInfo}.`;
+
+    return {
+      homeTournamentPts: homePts,
+      awayTournamentPts: awayPts,
+      homeSetsWon: s1.home,
+      awaySetsWon: s1.away,
+      homeTotalScore: s1.home,
+      awayTotalScore: s1.away,
+      noteText,
+      winnerName,
+      loserName,
+    };
+  }
+
+  // Set-based sports (Bóng chuyền, Cầu lông, Bóng bàn)
+  let homeSetsWon = 0;
+  let awaySetsWon = 0;
+  let homeTotalPts = 0;
+  let awayTotalPts = 0;
+
+  for (let s = 1; s <= 5; s++) {
+    const sc = match.scores[`set${s}` as keyof typeof match.scores] as
+      | { home: number; away: number }
+      | undefined;
+    if (sc) {
+      homeTotalPts += sc.home;
+      awayTotalPts += sc.away;
+      if (sc.home > sc.away) homeSetsWon++;
+      else if (sc.away > sc.home) awaySetsWon++;
+    }
+  }
+
+  let homeTournamentPts = 0;
+  let awayTournamentPts = 0;
+  let winnerName = '';
+  let loserName = '';
+
+  const hasScore =
+    homeTotalPts > 0 ||
+    awayTotalPts > 0 ||
+    homeSetsWon > 0 ||
+    awaySetsWon > 0 ||
+    match.status === 'FINISHED';
+
+  if (!hasScore) {
+    homeTournamentPts = 0;
+    awayTournamentPts = 0;
+  } else if (homeSetsWon > awaySetsWon) {
+    winnerName = match.home.name;
+    loserName = match.away.name;
+    // Điều lệ chuẩn: Thắng 2-0 / 3-0 / 3-1: 3 điểm, thua 0 điểm.
+    // Thắng 2-1 / 3-2: 2 điểm, thua 1 điểm.
+    if (awaySetsWon === 0 || homeSetsWon - awaySetsWon >= 2) {
+      homeTournamentPts = 3;
+      awayTournamentPts = 0;
+    } else {
+      homeTournamentPts = 2;
+      awayTournamentPts = 1;
+    }
+  } else if (awaySetsWon > homeSetsWon) {
+    winnerName = match.away.name;
+    loserName = match.home.name;
+    if (homeSetsWon === 0 || awaySetsWon - homeSetsWon >= 2) {
+      awayTournamentPts = 3;
+      homeTournamentPts = 0;
+    } else {
+      awayTournamentPts = 2;
+      homeTournamentPts = 1;
+    }
+  } else {
+    // Tỉ số set hòa (nếu có trận giao hữu hoặc chưa phân thắng bại)
+    if (match.status === 'FINISHED' && (homeTotalPts > 0 || awayTotalPts > 0)) {
+      if (homeTotalPts > awayTotalPts) {
+        winnerName = match.home.name;
+        loserName = match.away.name;
+        homeTournamentPts = 2;
+        awayTournamentPts = 1;
+      } else if (awayTotalPts > homeTotalPts) {
+        winnerName = match.away.name;
+        loserName = match.home.name;
+        awayTournamentPts = 2;
+        homeTournamentPts = 1;
+      } else {
+        homeTournamentPts = 1;
+        awayTournamentPts = 1;
+      }
+    } else {
+      homeTournamentPts = 0;
+      awayTournamentPts = 0;
+    }
+  }
+
+  const noteText = `* Ghi chú: Tổng điểm các set (số bàn thắng): ${match.home.name}: ${homeTotalPts} điểm; ${match.away.name}: ${awayTotalPts} điểm (Tỉ số set: ${homeSetsWon} - ${awaySetsWon}).`;
+
+  return {
+    homeTournamentPts,
+    awayTournamentPts,
+    homeSetsWon,
+    awaySetsWon,
+    homeTotalScore: homeTotalPts,
+    awayTotalScore: awayTotalPts,
+    noteText,
+    winnerName,
+    loserName,
+  };
+}
+
 /**
  * Generate official administrative match minutes Word (.doc)
  */
 export function exportMatchMinutesToWord(match: Match, config: TournamentConfig) {
   const isFootball = config.activeSportId === 'football';
-  const sportNames: Record<string, string> = {
-    volleyball: 'BÓNG CHUYỀN',
-    football: 'BÓNG ĐÁ',
-    badminton: 'CẦU LÔNG',
-    tabletennis: 'BÓNG BÀN',
-  };
 
-  let scoreDetailsHtml = '';
-  let finalResultHome = '';
-  let finalResultAway = '';
-  let winner = 'HÒA';
+  // Referee & Secretary names with sensible fallbacks
+  const refereeName = match.refereeName || config.referee || 'Bồ Công Lâm';
+  const secretaryName = match.secretaryName || config.secretary || 'Trần Thị Thu Hồng';
+
+  const calc = calculateMatchMinutesPoints(match, config);
+  const homeResultDisplay = `${calc.homeTournamentPts} điểm`;
+  const awayResultDisplay = `${calc.awayTournamentPts} điểm`;
+  const winnerName = calc.winnerName;
+  const loserName = calc.loserName;
+
+  // Table header & rows layout matching user image
+  let tableHeaderColsHtml = '';
+  let homeColsHtml = '';
+  let awayColsHtml = '';
 
   if (isFootball) {
-    const s1 = match.scores.set1;
-    scoreDetailsHtml = `
-      <tr>
-        <td style="border: 1px solid black; padding: 8px;"><strong>${match.home.name}</strong></td>
-        <td style="border: 1px solid black; padding: 8px; text-align: center;">${s1.home}</td>
-        <td style="border: 1px solid black; padding: 8px; text-align: center;">${match.scores.pen.played ? match.scores.pen.home : '-'}</td>
-      </tr>
-      <tr>
-        <td style="border: 1px solid black; padding: 8px;"><strong>${match.away.name}</strong></td>
-        <td style="border: 1px solid black; padding: 8px; text-align: center;">${s1.away}</td>
-        <td style="border: 1px solid black; padding: 8px; text-align: center;">${match.scores.pen.played ? match.scores.pen.away : '-'}</td>
-      </tr>
+    tableHeaderColsHtml = `
+      <th style="border: 1px solid #cbd5e1; padding: 10px 12px; text-align: left; width: 32%;">Đội thi đấu</th>
+      <th style="border: 1px solid #cbd5e1; padding: 10px 8px; text-align: center; width: 18%;">Hiệp chính</th>
+      <th style="border: 1px solid #cbd5e1; padding: 10px 8px; text-align: center; width: 18%;">Luân lưu (Pen)</th>
+      <th style="border: 1px solid #cbd5e1; padding: 10px 12px; text-align: center; width: 32%;">Kết quả chung cuộc</th>
     `;
-    if (s1.home > s1.away) winner = match.home.name;
-    else if (s1.away > s1.home) winner = match.away.name;
-    else if (match.scores.pen.played) {
-      if (match.scores.pen.home > match.scores.pen.away) winner = `${match.home.name} (Thắng luân lưu)`;
-      else if (match.scores.pen.away > match.scores.pen.home) winner = `${match.away.name} (Thắng luân lưu)`;
-    }
+    homeColsHtml = `
+      <td style="border: 1px solid #cbd5e1; padding: 10px 12px; font-weight: bold; text-align: left;">${match.home.name}</td>
+      <td style="border: 1px solid #cbd5e1; padding: 10px 8px; text-align: center;">${match.scores.set1.home}</td>
+      <td style="border: 1px solid #cbd5e1; padding: 10px 8px; text-align: center;">${match.scores.pen?.played ? match.scores.pen.home : '-'}</td>
+      <td style="border: 1px solid #cbd5e1; padding: 10px 12px; font-weight: bold; text-align: center;">${homeResultDisplay}</td>
+    `;
+    awayColsHtml = `
+      <td style="border: 1px solid #cbd5e1; padding: 10px 12px; font-weight: bold; text-align: left;">${match.away.name}</td>
+      <td style="border: 1px solid #cbd5e1; padding: 10px 8px; text-align: center;">${match.scores.set1.away}</td>
+      <td style="border: 1px solid #cbd5e1; padding: 10px 8px; text-align: center;">${match.scores.pen?.played ? match.scores.pen.away : '-'}</td>
+      <td style="border: 1px solid #cbd5e1; padding: 10px 12px; font-weight: bold; text-align: center;">${awayResultDisplay}</td>
+    `;
   } else {
-    let hSets = 0, aSets = 0, hPts = 0, aPts = 0;
-    const setCols: string[] = [];
-    for (let s = 1; s <= (config.matchSetsRule || 3); s++) {
-      const sc = match.scores[`set${s}` as keyof typeof match.scores] as { home: number; away: number };
-      if (sc) {
-        hPts += sc.home;
-        aPts += sc.away;
-        if (sc.home > sc.away) hSets++;
-        else if (sc.away > sc.home) aSets++;
-        setCols.push(`Set ${s}: ${sc.home} - ${sc.away}`);
-      }
-    }
-
-    finalResultHome = `${hSets} Set (${hPts} điểm)`;
-    finalResultAway = `${aSets} Set (${aPts} điểm)`;
-    if (hSets > aSets) winner = match.home.name;
-    else if (aSets > hSets) winner = match.away.name;
-
-    scoreDetailsHtml = `
-      <tr>
-        <td style="border: 1px solid black; padding: 8px;"><strong>${match.home.name}</strong></td>
-        <td style="border: 1px solid black; padding: 8px;">${setCols.map(s => s.split(':')[1]?.split('-')[0]?.trim()).join(' | ')}</td>
-        <td style="border: 1px solid black; padding: 8px; text-align: center;"><strong>${finalResultHome}</strong></td>
-      </tr>
-      <tr>
-        <td style="border: 1px solid black; padding: 8px;"><strong>${match.away.name}</strong></td>
-        <td style="border: 1px solid black; padding: 8px;">${setCols.map(s => s.split(':')[1]?.split('-')[1]?.trim()).join(' | ')}</td>
-        <td style="border: 1px solid black; padding: 8px; text-align: center;"><strong>${finalResultAway}</strong></td>
-      </tr>
+    tableHeaderColsHtml = `
+      <th style="border: 1px solid #cbd5e1; padding: 10px 12px; text-align: left; width: 30%;">Đội thi đấu</th>
+      <th style="border: 1px solid #cbd5e1; padding: 10px 8px; text-align: center; width: 14%;">Set 1</th>
+      <th style="border: 1px solid #cbd5e1; padding: 10px 8px; text-align: center; width: 14%;">Set 2</th>
+      <th style="border: 1px solid #cbd5e1; padding: 10px 8px; text-align: center; width: 14%;">Set 3</th>
+      <th style="border: 1px solid #cbd5e1; padding: 10px 12px; text-align: center; width: 28%;">Kết quả chung cuộc</th>
+    `;
+    homeColsHtml = `
+      <td style="border: 1px solid #cbd5e1; padding: 10px 12px; font-weight: bold; text-align: left;">${match.home.name}</td>
+      <td style="border: 1px solid #cbd5e1; padding: 10px 8px; text-align: center;">${match.scores.set1.home}</td>
+      <td style="border: 1px solid #cbd5e1; padding: 10px 8px; text-align: center;">${match.scores.set2.home}</td>
+      <td style="border: 1px solid #cbd5e1; padding: 10px 8px; text-align: center;">${match.scores.set3.home}</td>
+      <td style="border: 1px solid #cbd5e1; padding: 10px 12px; font-weight: bold; text-align: center;">${homeResultDisplay}</td>
+    `;
+    awayColsHtml = `
+      <td style="border: 1px solid #cbd5e1; padding: 10px 12px; font-weight: bold; text-align: left;">${match.away.name}</td>
+      <td style="border: 1px solid #cbd5e1; padding: 10px 8px; text-align: center;">${match.scores.set1.away}</td>
+      <td style="border: 1px solid #cbd5e1; padding: 10px 8px; text-align: center;">${match.scores.set2.away}</td>
+      <td style="border: 1px solid #cbd5e1; padding: 10px 8px; text-align: center;">${match.scores.set3.away}</td>
+      <td style="border: 1px solid #cbd5e1; padding: 10px 12px; font-weight: bold; text-align: center;">${awayResultDisplay}</td>
     `;
   }
 
@@ -200,8 +382,8 @@ export function exportMatchMinutesToWord(match: Match, config: TournamentConfig)
       <meta charset='utf-8'>
       <title>Biên Bản Thi Đấu</title>
       <style>
-        body { font-family: 'Times New Roman', Times, serif; font-size: 13pt; line-height: 1.4; color: black; }
-        table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+        body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.4; color: black; margin: 20px; }
+        table { width: 100%; border-collapse: collapse; }
         .text-center { text-align: center; }
         .text-right { text-align: right; }
         .font-bold { font-weight: bold; }
@@ -209,67 +391,96 @@ export function exportMatchMinutesToWord(match: Match, config: TournamentConfig)
       </style>
     </head>
     <body>
-      <table style="width: 100%; margin-bottom: 20px;">
+      <table style="width: 100%; border: none; margin-bottom: 16px; border-collapse: collapse;">
         <tr>
-          <td style="width: 45%; text-align: center; vertical-align: top;">
-            <p style="margin: 0;">${config.schoolName}</p>
-            <p style="margin: 2px 0; font-weight: bold;">${config.deptName}</p>
-            <p style="margin: 0;">***</p>
+          <td style="width: 48%; text-align: center; vertical-align: top; border: none; padding: 0;">
+            <p style="margin: 0; font-size: 11pt; text-transform: uppercase;">${config.schoolName || 'TRƯỜNG THPT HUỲNH TẤN PHÁT'}</p>
+            <p style="margin: 3px 0 0 0; font-size: 11pt; font-weight: bold; text-transform: uppercase;">
+              <u>${config.deptName || 'BAN TỔ CHỨC HỘI THAO'}</u>
+            </p>
           </td>
-          <td style="width: 55%; text-align: center; vertical-align: top;">
-            <p style="margin: 0; font-weight: bold;">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
-            <p style="margin: 2px 0; font-style: italic;">Độc lập - Tự do - Hạnh phúc</p>
-            <p style="margin: 0;">---------------</p>
+          <td style="width: 52%; text-align: center; vertical-align: top; border: none; padding: 0;">
+            <p style="margin: 0; font-weight: bold; font-size: 11pt; text-transform: uppercase;">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
+            <p style="margin: 3px 0 0 0; font-weight: bold; font-size: 11pt;">
+              <u>Độc lập - Tự do - Hạnh phúc</u>
+            </p>
           </td>
         </tr>
       </table>
 
-      <div style="text-align: center; margin: 25px 0;">
+      <div style="text-align: center; margin: 18px 0 16px 0;">
         <h2 style="margin: 0; font-size: 16pt; font-weight: bold; text-transform: uppercase;">BIÊN BẢN THI ĐẤU THỂ THAO</h2>
-        <p style="margin: 4px 0; font-style: italic;">Giải đấu: ${config.tournamentName}</p>
-        <p style="margin: 6px 0; font-weight: bold; color: #1e3a8a;">${match.code}: ${match.home.name} - ${match.away.name}</p>
+        <p style="margin: 4px 0; font-style: italic; font-size: 11pt;">Giải đấu: ${config.tournamentName}</p>
+        <p style="margin: 4px 0; font-weight: bold; color: #1e3a8a; font-size: 13pt;">${match.code}: ${match.home.name} — ${match.away.name} (${match.stage})</p>
       </div>
 
-      <p><strong>1. Môn thi đấu:</strong> ${sportNames[config.activeSportId || 'volleyball'] || (config.activeSportId || 'BÓNG CHUYỀN').toUpperCase()}</p>
-      <p><strong>2. Thời gian:</strong> ${match.time} ngày ${match.date || new Date().toLocaleDateString('vi-VN')}</p>
-      <p><strong>3. Địa điểm thi đấu:</strong> ${match.pitch}</p>
-      <p><strong>4. Ban tổ chức & Cán bộ điều hành:</strong></p>
-      <ul style="margin-top: 4px;">
-        <li>Trưởng Ban Tổ Chức: ${config.organizer}</li>
-        <li>Trọng tài chính: ${match.refereeName || config.referee}</li>
-        <li>Thư ký bàn: ${match.secretaryName || config.secretary}</li>
-      </ul>
+      <table style="width: 100%; border: none; margin: 16px 0 10px 0; font-size: 12pt; border-collapse: collapse;">
+        <tr>
+          <td style="width: 50%; vertical-align: top; border: none; padding: 2px 0;">
+            <p style="margin: 3px 0;"><strong>Thời gian:</strong> ${match.time} ngày ${match.date || new Date().toISOString().slice(0, 10)}</p>
+            <p style="margin: 3px 0;"><strong>Sân thi đấu:</strong> ${match.pitch}</p>
+          </td>
+          <td style="width: 50%; vertical-align: top; border: none; padding: 2px 0;">
+            <p style="margin: 3px 0;"><strong>Trọng tài chính:</strong> ${refereeName}</p>
+            <p style="margin: 3px 0;"><strong>Thư ký bàn:</strong> ${secretaryName}</p>
+          </td>
+        </tr>
+      </table>
 
-      <p><strong>5. Kết quả thi đấu:</strong></p>
-      <table>
+      <table style="width: 100%; border-collapse: collapse; margin: 12px 0 6px 0; font-size: 12pt; border: 1px solid #cbd5e1;">
         <thead>
-          <tr style="background-color: #f1f5f9;">
-            <th style="border: 1px solid black; padding: 8px;">Đội / Đơn Vị</th>
-            <th style="border: 1px solid black; padding: 8px;">Chi Tiết Điểm / Tỉ Số</th>
-            <th style="border: 1px solid black; padding: 8px;">Kết Quả</th>
+          <tr style="background-color: #f0f4f8; font-weight: bold;">
+            ${tableHeaderColsHtml}
           </tr>
         </thead>
         <tbody>
-          ${scoreDetailsHtml}
+          <tr>
+            ${homeColsHtml}
+          </tr>
+          <tr>
+            ${awayColsHtml}
+          </tr>
         </tbody>
       </table>
 
-      <p><strong>6. Kết luận:</strong> Đội thắng cuộc: <strong style="text-transform: uppercase; color: #15803d;">${winner}</strong></p>
-      <p style="font-style: italic;">Biên bản thi đấu kết thúc vào lúc ..... giờ ..... cùng ngày. Các bên đã đọc và hoàn toàn nhất trí ký tên.</p>
+      <p style="margin: 6px 0 16px 0; font-style: italic; font-size: 10.5pt; color: #334155;">
+        ${calc.noteText}
+      </p>
 
-      <table style="width: 100%; margin-top: 40px; text-align: center;">
+      <div style="margin: 16px 0 20px 0; font-size: 12pt; line-height: 1.6;">
+        <p style="margin: 0 0 2px 0; font-weight: bold;">Kết luận:</p>
+        <p style="margin: 2px 0;">
+          Đội thắng cuộc: <strong style="color: #15803d;">${winnerName ? winnerName : '(Chờ kết thúc trận)'}</strong>
+        </p>
+        <p style="margin: 2px 0;">
+          Đội thua cuộc: <strong style="color: #b91c1c;">${loserName ? loserName : '(Xác định sau khi kết thúc trận)'}</strong>
+        </p>
+        <p style="margin: 6px 0 0 0; font-style: italic; font-size: 11pt; color: #334155;">
+          Biên bản thi đấu kết thúc vào cùng ngày. Các bên đã đọc, xác nhận kết quả chính xác và nhất trí ký tên dưới đây.
+        </p>
+      </div>
+
+      <table style="width: 100%; margin-top: 30px; text-align: center; font-size: 11pt; border: none; border-collapse: collapse;">
         <tr>
-          <td style="width: 33%; font-weight: bold;">
-            TRƯỞNG BAN TỔ CHỨC<br><br><br><br>
-            <span style="font-weight: normal;">${config.organizer}</span>
+          <td style="width: 33%; vertical-align: top; text-align: center; border: none; padding: 0 4px;">
+            <p style="margin: 0; font-weight: bold; text-transform: uppercase;">TRỌNG TÀI CHÍNH</p>
+            <p style="margin: 3px 0 0 0; font-style: italic; font-size: 10.5pt; color: #475569;">(Ký và ghi rõ họ tên)</p>
+            <div style="height: 65px;"></div>
+            <p style="margin: 0; font-weight: bold;">${refereeName}</p>
           </td>
-          <td style="width: 33%; font-weight: bold;">
-            TRỌNG TÀI CHÍNH<br><br><br><br>
-            <span style="font-weight: normal;">${match.refereeName || config.referee}</span>
+          <td style="width: 33%; vertical-align: top; text-align: center; border: none; padding: 0 4px;">
+            <p style="margin: 0; font-weight: bold; text-transform: uppercase;">THƯ KÝ BÀN</p>
+            <p style="margin: 3px 0 0 0; font-style: italic; font-size: 10.5pt; color: #475569;">(Ký và ghi rõ họ tên)</p>
+            <div style="height: 65px;"></div>
+            <p style="margin: 0; font-weight: bold;">${secretaryName}</p>
           </td>
-          <td style="width: 33%; font-weight: bold;">
-            THƯ KÝ BÀN<br><br><br><br>
-            <span style="font-weight: normal;">${match.secretaryName || config.secretary}</span>
+          <td style="width: 34%; vertical-align: top; text-align: center; border: none; padding: 0 4px;">
+            <p style="margin: 0; font-weight: bold; text-transform: uppercase;">ĐẠI DIỆN ĐỘI BÓNG</p>
+            <p style="margin: 2px 0 0 0; font-weight: bold; font-size: 10.5pt; color: #b91c1c;">
+              ${loserName ? `(Đội ${loserName} - Đội thua)` : '(Tên đội thua xác định sau trận)'}
+            </p>
+            <p style="margin: 2px 0 0 0; font-style: italic; font-size: 10.5pt; color: #475569;">(Ký và ghi rõ họ tên)</p>
+            <div style="height: 65px;"></div>
           </td>
         </tr>
       </table>

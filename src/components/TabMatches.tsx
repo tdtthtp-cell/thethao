@@ -1114,13 +1114,33 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
                   <span>Xuất Biên Bản Word (.doc)</span>
                 </button>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => onOpenMinutes(quickScoreMatch)}
+                    className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    title="Mở biên bản thi đấu chính thức để xem và in"
+                  >
+                    <FileText className="w-4 h-4 text-sky-400" />
+                    <span>In Biên Bản</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => setQuickScoreMatch(null)}
-                    className="px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
+                    className="px-4 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    title="Thoát khỏi cửa sổ nhập điểm"
                   >
-                    Hoàn Tất & Lưu Tỉ Số
+                    <X className="w-4 h-4" />
+                    <span>Thoát</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setQuickScoreMatch(null)}
+                    className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer font-bold"
+                  >
+                    Hoàn Tất & Lưu
                   </button>
                 </div>
               </div>

@@ -24,6 +24,7 @@ import {
   exportTournamentBackupJSON,
   exportEncryptedBackupPackage,
   importEncryptedBackupPackage,
+  calculateMatchMinutesPoints,
 } from '../services/export';
 
 interface ReportsModalProps {
@@ -499,14 +500,26 @@ export const ReportsModal: React.FC<ReportsModalProps> = ({
               {/* Match minutes preview sheet */}
               {currentMatch ? (
                 <div className="p-6 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl space-y-4 font-serif text-slate-900 dark:text-slate-100 text-xs sm:text-sm">
-                  <div className="grid grid-cols-2 gap-2 text-center pb-3 border-b border-slate-100 dark:border-slate-800">
+                  <div className="grid grid-cols-2 gap-4 text-center pb-3 border-b border-slate-200 dark:border-slate-800 font-serif">
                     <div>
-                      <div className="uppercase font-bold">{config.schoolName}</div>
-                      <div className="font-semibold text-xs">{config.deptName}</div>
+                      <div className="font-normal uppercase text-xs sm:text-sm text-slate-800 dark:text-slate-200">
+                        {config.schoolName || 'TRƯỜNG THPT HUỲNH TẤN PHÁT'}
+                      </div>
+                      <div className="font-bold text-xs sm:text-sm uppercase text-slate-900 dark:text-white mt-1">
+                        <span className="underline decoration-slate-900 dark:decoration-slate-200 underline-offset-4">
+                          {config.deptName || 'BAN TỔ CHỨC HỘI THAO'}
+                        </span>
+                      </div>
                     </div>
                     <div>
-                      <div className="font-bold">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</div>
-                      <div className="italic text-xs">Độc lập - Tự do - Hạnh phúc</div>
+                      <div className="font-bold text-xs sm:text-sm uppercase text-slate-900 dark:text-white">
+                        CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+                      </div>
+                      <div className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white mt-1">
+                        <span className="underline decoration-slate-900 dark:decoration-slate-200 underline-offset-4">
+                          Độc lập - Tự do - Hạnh phúc
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -519,69 +532,123 @@ export const ReportsModal: React.FC<ReportsModalProps> = ({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 text-xs font-sans">
-                    <div>
-                      <div><strong>Thời gian:</strong> {currentMatch.time} ngày {currentMatch.date || new Date().toLocaleDateString('vi-VN')}</div>
+                  {/* Match Meta (EXACTLY like image) */}
+                  <div className="grid grid-cols-2 gap-3 text-xs sm:text-sm font-sans py-2 border-y border-slate-100 dark:border-slate-800">
+                    <div className="space-y-1">
+                      <div><strong>Thời gian:</strong> {currentMatch.time} ngày {currentMatch.date || new Date().toISOString().slice(0, 10)}</div>
                       <div><strong>Sân thi đấu:</strong> {currentMatch.pitch}</div>
                     </div>
-                    <div>
-                      <div><strong>Trọng tài chính:</strong> {currentMatch.refereeName || config.referee}</div>
-                      <div><strong>Thư ký bàn:</strong> {currentMatch.secretaryName || config.secretary}</div>
+                    <div className="space-y-1 text-right">
+                      <div><strong>Trọng tài chính:</strong> {currentMatch.refereeName || config.referee || 'Bồ Công Lâm'}</div>
+                      <div><strong>Thư ký bàn:</strong> {currentMatch.secretaryName || config.secretary || 'Trần Thị Thu Hồng'}</div>
                     </div>
                   </div>
 
-                  {/* Scores table */}
+                  {/* Scores table (EXACTLY like image) */}
                   <div className="pt-2 font-sans">
-                    <table className="w-full text-xs border border-slate-300 dark:border-slate-700 text-center border-collapse">
+                    <table className="w-full text-xs sm:text-sm border border-slate-300 dark:border-slate-700 text-center border-collapse">
                       <thead>
-                        <tr className="bg-slate-100 dark:bg-slate-800 font-bold">
-                          <th className="p-2 text-left border border-slate-300 dark:border-slate-700">Đội thi đấu</th>
-                          <th className="p-2 border border-slate-300 dark:border-slate-700">Set 1</th>
-                          <th className="p-2 border border-slate-300 dark:border-slate-700">Set 2</th>
-                          <th className="p-2 border border-slate-300 dark:border-slate-700">Set 3</th>
-                          <th className="p-2 border border-slate-300 dark:border-slate-700">Kết quả chung cuộc</th>
+                        <tr className="bg-slate-100/90 dark:bg-slate-800 font-bold text-slate-800 dark:text-slate-200">
+                          <th className="p-2.5 text-left border border-slate-300 dark:border-slate-700 w-2/5">Đội thi đấu</th>
+                          <th className="p-2.5 border border-slate-300 dark:border-slate-700 w-16">Set 1</th>
+                          <th className="p-2.5 border border-slate-300 dark:border-slate-700 w-16">Set 2</th>
+                          <th className="p-2.5 border border-slate-300 dark:border-slate-700 w-16">Set 3</th>
+                          <th className="p-2.5 border border-slate-300 dark:border-slate-700 w-1/3">Kết quả chung cuộc</th>
                         </tr>
                       </thead>
                       <tbody>
-                        <tr>
-                          <td className="p-2 text-left font-bold border border-slate-300 dark:border-slate-700">{currentMatch.home.name}</td>
-                          <td className="p-2 border border-slate-300 dark:border-slate-700 font-mono">{currentMatch.scores.set1.home}</td>
-                          <td className="p-2 border border-slate-300 dark:border-slate-700 font-mono">{currentMatch.scores.set2.home}</td>
-                          <td className="p-2 border border-slate-300 dark:border-slate-700 font-mono">{currentMatch.scores.set3.home}</td>
-                          <td className="p-2 border border-slate-300 dark:border-slate-700 font-bold font-mono">
-                            {currentMatch.scores.set1.home + currentMatch.scores.set2.home + currentMatch.scores.set3.home} điểm
-                          </td>
-                        </tr>
-                        <tr>
-                          <td className="p-2 text-left font-bold border border-slate-300 dark:border-slate-700">{currentMatch.away.name}</td>
-                          <td className="p-2 border border-slate-300 dark:border-slate-700 font-mono">{currentMatch.scores.set1.away}</td>
-                          <td className="p-2 border border-slate-300 dark:border-slate-700 font-mono">{currentMatch.scores.set2.away}</td>
-                          <td className="p-2 border border-slate-300 dark:border-slate-700 font-mono">{currentMatch.scores.set3.away}</td>
-                          <td className="p-2 border border-slate-300 dark:border-slate-700 font-bold font-mono">
-                            {currentMatch.scores.set1.away + currentMatch.scores.set2.away + currentMatch.scores.set3.away} điểm
-                          </td>
-                        </tr>
+                        {(() => {
+                          const calc = calculateMatchMinutesPoints(currentMatch, config);
+
+                          return (
+                            <>
+                              <tr>
+                                <td className="p-2.5 text-left font-bold border border-slate-300 dark:border-slate-700">{currentMatch.home.name}</td>
+                                <td className="p-2.5 border border-slate-300 dark:border-slate-700 font-mono">{currentMatch.scores.set1.home}</td>
+                                <td className="p-2.5 border border-slate-300 dark:border-slate-700 font-mono">{currentMatch.scores.set2.home}</td>
+                                <td className="p-2.5 border border-slate-300 dark:border-slate-700 font-mono">{currentMatch.scores.set3.home}</td>
+                                <td className="p-2.5 border border-slate-300 dark:border-slate-700 font-bold font-mono text-blue-700 dark:text-blue-400">
+                                  {calc.homeTournamentPts} điểm
+                                </td>
+                              </tr>
+                              <tr>
+                                <td className="p-2.5 text-left font-bold border border-slate-300 dark:border-slate-700">{currentMatch.away.name}</td>
+                                <td className="p-2.5 border border-slate-300 dark:border-slate-700 font-mono">{currentMatch.scores.set1.away}</td>
+                                <td className="p-2.5 border border-slate-300 dark:border-slate-700 font-mono">{currentMatch.scores.set2.away}</td>
+                                <td className="p-2.5 border border-slate-300 dark:border-slate-700 font-mono">{currentMatch.scores.set3.away}</td>
+                                <td className="p-2.5 border border-slate-300 dark:border-slate-700 font-bold font-mono text-blue-700 dark:text-blue-400">
+                                  {calc.awayTournamentPts} điểm
+                                </td>
+                              </tr>
+                            </>
+                          );
+                        })()}
                       </tbody>
                     </table>
+                    <p className="text-xs italic text-slate-600 dark:text-slate-400 font-sans pt-2">
+                      {calculateMatchMinutesPoints(currentMatch, config).noteText}
+                    </p>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-2 text-center pt-8 text-xs font-sans">
-                    <div>
-                      <div className="font-bold">ĐẠI DIỆN ĐỘI BÓNG</div>
-                      <div className="h-14"></div>
-                      <div className="text-slate-400 italic">(Ký, họ tên)</div>
-                    </div>
-                    <div>
-                      <div className="font-bold">THƯ KÝ BÀN</div>
-                      <div className="h-14"></div>
-                      <div className="font-semibold">{currentMatch.secretaryName || config.secretary}</div>
-                    </div>
-                    <div>
-                      <div className="font-bold">TRỌNG TÀI CHÍNH</div>
-                      <div className="h-14"></div>
-                      <div className="font-semibold">{currentMatch.refereeName || config.referee}</div>
-                    </div>
-                  </div>
+                  {/* Conclusion (EXACTLY matching user image) */}
+                  {(() => {
+                    const calc = calculateMatchMinutesPoints(currentMatch, config);
+                    return (
+                      <div className="pt-2 text-xs sm:text-sm space-y-1 font-serif">
+                        <p className="font-bold text-slate-900 dark:text-white">Kết luận:</p>
+                        <p>
+                          Đội thắng cuộc:{' '}
+                          <span className="font-bold text-emerald-600 dark:text-emerald-400">
+                            {calc.winnerName || '(Chờ kết thúc trận)'}
+                          </span>
+                        </p>
+                        <p>
+                          Đội thua cuộc:{' '}
+                          <span className="font-bold text-rose-600 dark:text-rose-400">
+                            {calc.loserName || '(Xác định sau khi kết thúc trận)'}
+                          </span>
+                        </p>
+                        <p className="italic text-xs text-slate-500 dark:text-slate-400 pt-1">
+                          Biên bản thi đấu kết thúc vào cùng ngày. Các bên đã đọc, xác nhận kết quả chính xác và nhất trí ký tên dưới đây.
+                        </p>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Signatures (EXACTLY matching user image: Trọng tài chính, Thư ký bàn, Đại diện đội bóng (tên đội thua)) */}
+                  {(() => {
+                    const calc = calculateMatchMinutesPoints(currentMatch, config);
+                    const loser = calc.loserName;
+
+                    return (
+                      <div className="grid grid-cols-3 gap-3 text-center pt-6 text-xs font-serif">
+                        <div>
+                          <p className="font-bold uppercase text-slate-900 dark:text-white">TRỌNG TÀI CHÍNH</p>
+                          <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký và ghi rõ họ tên)</p>
+                          <div className="h-16"></div>
+                          <p className="font-bold text-slate-900 dark:text-slate-100">
+                            {currentMatch.refereeName || config.referee || 'Bồ Công Lâm'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="font-bold uppercase text-slate-900 dark:text-white">THƯ KÝ BÀN</p>
+                          <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký và ghi rõ họ tên)</p>
+                          <div className="h-16"></div>
+                          <p className="font-bold text-slate-900 dark:text-slate-100">
+                            {currentMatch.secretaryName || config.secretary || 'Trần Thị Thu Hồng'}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="font-bold uppercase text-slate-900 dark:text-white">ĐẠI DIỆN ĐỘI BÓNG</p>
+                          <p className="text-[11px] font-bold text-rose-600 mt-0.5">
+                            {loser ? `(Đội ${loser} - Đội thua)` : '(Tên đội thua xác định sau trận)'}
+                          </p>
+                          <p className="text-[11px] text-slate-500 italic mt-0.5">(Ký và ghi rõ họ tên)</p>
+                          <div className="h-16"></div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               ) : (
                 <div className="p-8 text-center text-slate-400 text-xs">Chưa có trận đấu nào trong giải</div>
