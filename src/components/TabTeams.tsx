@@ -19,6 +19,10 @@ import {
   X,
   Palette,
   Eye,
+  Layers,
+  LayoutGrid,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { Athlete, Team, TeamGender, TournamentConfig, UserProfile } from '../types';
 import { TeamExcelImportModal } from './TeamExcelImportModal';
@@ -92,6 +96,19 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
   // Filtered teams
   const filteredTeams = useMemo(() => {
     return teams.filter((t) => {
+      // Sport scope: if team has sportId, must match activeSportId
+      if (t.sportId && t.sportId !== config.activeSportId) return false;
+
+      // Category scope: if activeCategoryId is set and team has categoryId, must match
+      if (
+        config.activeCategoryId &&
+        config.activeCategoryId !== 'ALL' &&
+        t.categoryId &&
+        t.categoryId !== config.activeCategoryId
+      ) {
+        return false;
+      }
+
       const matchGroup = selectedGroup === 'ALL' || t.group === selectedGroup;
       const matchGender =
         selectedGender === 'ALL' ||
@@ -103,16 +120,20 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
         (t.coachName && t.coachName.toLowerCase().includes(searchQuery.toLowerCase()));
       return matchGroup && matchGender && matchSearch;
     });
-  }, [teams, selectedGroup, selectedGender, searchQuery]);
+  }, [teams, config.activeSportId, config.activeCategoryId, selectedGroup, selectedGender, searchQuery]);
 
-  // Summary statistics
+  // Summary statistics for current sport
+  const currentSportTeams = useMemo(() => {
+    return teams.filter((t) => !t.sportId || t.sportId === config.activeSportId);
+  }, [teams, config.activeSportId]);
+
   const teamStats = useMemo(() => {
-    const total = teams.length;
-    const male = teams.filter((t) => !t.gender || t.gender === 'male').length;
-    const female = teams.filter((t) => t.gender === 'female').length;
-    const mixed = teams.filter((t) => t.gender === 'mixed').length;
+    const total = currentSportTeams.length;
+    const male = currentSportTeams.filter((t) => !t.gender || t.gender === 'male').length;
+    const female = currentSportTeams.filter((t) => t.gender === 'female').length;
+    const mixed = currentSportTeams.filter((t) => t.gender === 'mixed').length;
     return { total, male, female, mixed };
-  }, [teams]);
+  }, [currentSportTeams]);
 
   // Bulk selection helpers
   const handleToggleTeam = (id: string) => {
@@ -180,6 +201,8 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
 
     const teamToSave: Team = {
       id: editingTeam ? editingTeam.id : 'T_' + Date.now(),
+      sportId: editingTeam?.sportId || config.activeSportId,
+      categoryId: editingTeam?.categoryId || (config.activeCategoryId !== 'ALL' ? config.activeCategoryId : undefined),
       name: newTeamName.trim(),
       group: newTeamGroup,
       gender: newTeamGender,

@@ -53,6 +53,8 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
   const [newAccName, setNewAccName] = useState('');
   const [newAccRole, setNewAccRole] = useState<UserRole>('referee');
   const [newAccPass, setNewAccPass] = useState('');
+  const [newAccAssignedSports, setNewAccAssignedSports] = useState<string[]>(['volleyball']);
+  const [newAccAssignedCategories, setNewAccAssignedCategories] = useState<string[]>(['Nam', 'Nữ']);
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [resetPassInput, setResetPassInput] = useState('');
   const [userSearchQuery, setUserSearchQuery] = useState('');
@@ -126,6 +128,8 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
           : newAccRole === 'athlete'
           ? 'Đội Trưởng / VĐV'
           : 'Khách Xem',
+      assignedSports: newAccRole === 'referee' || newAccRole === 'secretary' ? newAccAssignedSports : undefined,
+      assignedCategories: newAccRole === 'referee' || newAccRole === 'secretary' ? newAccAssignedCategories : undefined,
       createdAt: new Date().toISOString().slice(0, 10),
     };
     onSaveUser(newAcc);
@@ -314,6 +318,100 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
                 </select>
               </div>
 
+              {/* Assignment controls for Referee / Secretary */}
+              {(newAccRole === 'referee' || newAccRole === 'secretary') && (
+                <div className="p-3 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2.5">
+                  <div className="text-[11px] font-bold text-sky-700 dark:text-sky-300">
+                    Phân Công Nhiệm Vụ Quản Lý
+                  </div>
+
+                  {/* Sports Assignment */}
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                      Môn thi đấu phụ trách:
+                    </label>
+                    <div className="flex flex-wrap gap-1">
+                      {sports.map((sp) => {
+                        const checked = newAccAssignedSports.includes(sp.id);
+                        return (
+                          <button
+                            key={sp.id}
+                            type="button"
+                            onClick={() => {
+                              if (checked) {
+                                if (newAccAssignedSports.length > 1) {
+                                  setNewAccAssignedSports(newAccAssignedSports.filter((id) => id !== sp.id));
+                                }
+                              } else {
+                                setNewAccAssignedSports([...newAccAssignedSports, sp.id]);
+                              }
+                            }}
+                            className={`px-2 py-0.5 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                              checked
+                                ? 'bg-sky-600 text-white border-sky-600'
+                                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            {checked ? '✓ ' : ''}{sp.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Categories Assignment */}
+                  <div>
+                    <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">
+                      Nội dung phụ trách:
+                    </label>
+                    <div className="flex flex-wrap gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setNewAccAssignedCategories([])}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                          newAccAssignedCategories.length === 0
+                            ? 'bg-indigo-600 text-white border-indigo-600'
+                            : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                        }`}
+                      >
+                        Tất cả nội dung
+                      </button>
+                      {/* Aggregate categories from assigned sports */}
+                      {Array.from(
+                        new Set(
+                          sports
+                            .filter((s) => newAccAssignedSports.includes(s.id))
+                            .flatMap((s) => s.categories || [])
+                            .map((c) => c.name)
+                        )
+                      ).map((catName) => {
+                        const checked = newAccAssignedCategories.includes(catName);
+                        return (
+                          <button
+                            key={catName}
+                            type="button"
+                            onClick={() => {
+                              if (checked) {
+                                setNewAccAssignedCategories(newAccAssignedCategories.filter((c) => c !== catName));
+                              } else {
+                                setNewAccAssignedCategories([...newAccAssignedCategories, catName]);
+                              }
+                            }}
+                            className={`px-2 py-0.5 rounded-lg text-[10px] font-bold border transition cursor-pointer ${
+                              checked
+                                ? 'bg-indigo-600 text-white border-indigo-600'
+                                : 'bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                            }`}
+                          >
+                            {checked ? '✓ ' : ''}{catName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="block text-[10px] uppercase font-bold text-slate-400 mb-1">Mật khẩu cấp *</label>
                 <input
@@ -328,7 +426,7 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
 
               <button
                 type="submit"
-                className="w-full py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl transition"
+                className="w-full py-2 bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-xs"
               >
                 Cấp Tài Khoản
               </button>
@@ -386,6 +484,7 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
                       <th className="p-2.5">Tài Khoản</th>
                       <th className="p-2.5">Họ Tên</th>
                       <th className="p-2.5">Vai Trò</th>
+                      <th className="p-2.5">Phân Công Quản Lý</th>
                       <th className="p-2.5 text-right">Reset Mật Khẩu / Xóa</th>
                     </tr>
                   </thead>
@@ -415,6 +514,24 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
                             {u.role.toUpperCase()}
                           </span>
                         </td>
+                        <td className="p-2.5 text-[11px]">
+                          {u.role === 'admin' ? (
+                            <span className="text-slate-400 font-semibold">Toàn quyền giải đấu</span>
+                          ) : (
+                            <div className="space-y-0.5">
+                              <div className="font-semibold text-slate-700 dark:text-slate-300">
+                                {u.assignedSports && u.assignedSports.length > 0
+                                  ? sports.filter((s) => u.assignedSports?.includes(s.id)).map((s) => s.name).join(', ')
+                                  : 'Tất cả các môn'}
+                              </div>
+                              <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold">
+                                {u.assignedCategories && u.assignedCategories.length > 0
+                                  ? u.assignedCategories.join(', ')
+                                  : 'Tất cả nội dung'}
+                              </div>
+                            </div>
+                          )}
+                        </td>
                         <td className="p-2.5 text-right">
                           {editingUserId === u.id ? (
                             <div className="flex items-center justify-end gap-1">
@@ -443,20 +560,21 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
                               >
                                 Lưu
                               </button>
-                              <button onClick={() => setEditingUserId(null)} className="text-slate-400 p-1">✕</button>
+                              <button onClick={() => setEditingUserId(null)} className="text-slate-400 p-1 cursor-pointer">✕</button>
                             </div>
                           ) : (
                             <div className="flex items-center justify-end gap-1.5">
                               <button
                                 onClick={() => { setEditingUserId(u.id); setResetPassInput(''); }}
-                                className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 dark:text-slate-300"
+                                className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 rounded-lg text-[11px] font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
                               >
                                 Reset MK
                               </button>
                               {u.username !== 'admin' && (
                                 <button
                                   onClick={() => onDeleteUser(u.id)}
-                                  className="p-1 text-slate-400 hover:text-rose-600"
+                                  className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                                  title="Xóa tài khoản"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
@@ -489,6 +607,55 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
           </div>
 
           <div className="space-y-3">
+            <div>
+              <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                Năm Thi Đấu Thực Tế *
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="2020"
+                  max="2050"
+                  disabled={!isAdmin}
+                  value={config.year || new Date().getFullYear()}
+                  onChange={(e) => {
+                    const yr = parseInt(e.target.value) || new Date().getFullYear();
+                    handleChange('year', yr);
+                  }}
+                  className="w-32 px-3.5 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none font-bold text-sky-600 dark:text-sky-400"
+                />
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const cur = new Date().getFullYear();
+                      handleChange('year', cur);
+                      handleChange('tournamentName', `GIẢI THỂ THAO HỌC SINH NĂM ${cur}`);
+                    }}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
+                  >
+                    Lấy Năm Hiện Tại ({new Date().getFullYear()})
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Năm thi đấu tự động đồng bộ trên toàn bộ lịch thi đấu, biên bản và báo cáo văn bản.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                Tên Giải Đấu
+              </label>
+              <input
+                type="text"
+                disabled={!isAdmin}
+                value={config.tournamentName}
+                onChange={(e) => handleChange('tournamentName', e.target.value)}
+                className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none font-bold"
+              />
+            </div>
+
             <div>
               <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
                 Tên Trường / Cơ Sở

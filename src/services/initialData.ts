@@ -20,6 +20,8 @@ export const DEFAULT_RANKING_CRITERIA: RankingCriterionConfig[] = [
   { id: 'sets_lost', label: '7. Số set thua (ít hơn xếp trên)', enabled: false, order: 7 },
 ];
 
+const CURRENT_YEAR = new Date().getFullYear();
+
 export const INITIAL_SPORTS: Sport[] = [
   {
     id: 'volleyball',
@@ -32,6 +34,10 @@ export const INITIAL_SPORTS: Sport[] = [
     ptsLoss: 0,
     icon: 'volleyball',
     description: 'Đấu 3 set (thắng 2) hoặc 5 set (thắng 3). Thắng cách biệt +3đ, suýt soát +2đ/1đ.',
+    categories: [
+      { id: 'vb_male', name: 'Nam', gender: 'male', type: 'team' },
+      { id: 'vb_female', name: 'Nữ', gender: 'female', type: 'team' },
+    ],
   },
   {
     id: 'football',
@@ -44,6 +50,10 @@ export const INITIAL_SPORTS: Sport[] = [
     ptsLoss: 0,
     icon: 'football',
     description: '1 hiệp chính, hòa có thể sút luân lưu. Thắng hiệp chính +3đ, hòa 1đ, thắng Pen 1đ.',
+    categories: [
+      { id: 'fb_male', name: 'Nam', gender: 'male', type: 'team' },
+      { id: 'fb_female', name: 'Nữ', gender: 'female', type: 'team' },
+    ],
   },
   {
     id: 'badminton',
@@ -56,6 +66,13 @@ export const INITIAL_SPORTS: Sport[] = [
     ptsLoss: 0,
     icon: 'badminton',
     description: 'Thi đấu 3 ván 21 điểm, thắng 2 ván.',
+    categories: [
+      { id: 'bm_ms', name: 'Đơn nam', gender: 'male', type: 'singles' },
+      { id: 'bm_ws', name: 'Đơn nữ', gender: 'female', type: 'singles' },
+      { id: 'bm_md', name: 'Đôi nam', gender: 'male', type: 'doubles' },
+      { id: 'bm_wd', name: 'Đôi nữ', gender: 'female', type: 'doubles' },
+      { id: 'bm_xd', name: 'Đôi nam nữ', gender: 'mixed', type: 'doubles' },
+    ],
   },
   {
     id: 'tabletennis',
@@ -68,6 +85,49 @@ export const INITIAL_SPORTS: Sport[] = [
     ptsLoss: 0,
     icon: 'tabletennis',
     description: 'Thi đấu 3 ván 11 điểm, thắng 2 ván.',
+    categories: [
+      { id: 'tt_ms', name: 'Đơn nam', gender: 'male', type: 'singles' },
+      { id: 'tt_ws', name: 'Đơn nữ', gender: 'female', type: 'singles' },
+      { id: 'tt_md', name: 'Đôi nam', gender: 'male', type: 'doubles' },
+      { id: 'tt_wd', name: 'Đôi nữ', gender: 'female', type: 'doubles' },
+      { id: 'tt_xd', name: 'Đôi nam nữ', gender: 'mixed', type: 'doubles' },
+    ],
+  },
+  {
+    id: 'shuttlecock',
+    name: 'Đá cầu',
+    code: 'SHUTTLECOCK',
+    maxSets: 3,
+    pointScheme: 'standard',
+    ptsWin: 3,
+    ptsDraw: 0,
+    ptsLoss: 0,
+    icon: 'activity',
+    description: 'Thi đấu 3 ván 21 điểm, thắng 2 ván.',
+    categories: [
+      { id: 'sc_ms', name: 'Đơn nam', gender: 'male', type: 'singles' },
+      { id: 'sc_ws', name: 'Đơn nữ', gender: 'female', type: 'singles' },
+      { id: 'sc_md', name: 'Đôi nam', gender: 'male', type: 'doubles' },
+      { id: 'sc_wd', name: 'Đôi nữ', gender: 'female', type: 'doubles' },
+      { id: 'sc_xd', name: 'Đôi nam nữ', gender: 'mixed', type: 'doubles' },
+    ],
+  },
+  {
+    id: 'tugofwar',
+    name: 'Kéo co',
+    code: 'TUGOFWAR',
+    maxSets: 3,
+    pointScheme: 'standard',
+    ptsWin: 3,
+    ptsDraw: 0,
+    ptsLoss: 0,
+    icon: 'users',
+    description: 'Thi đấu 3 hiệp kéo, đội thắng 2 hiệp giành chiến thắng chung cuộc.',
+    categories: [
+      { id: 'tug_m', name: 'Đội nam', gender: 'male', type: 'team' },
+      { id: 'tug_w', name: 'Đội nữ', gender: 'female', type: 'team' },
+      { id: 'tug_x', name: 'Đội nam nữ', gender: 'mixed', type: 'team' },
+    ],
   },
 ];
 
@@ -79,18 +139,20 @@ export const DEFAULT_GUEST_USER: UserProfile = {
 };
 
 export const DEFAULT_CONFIG: TournamentConfig = {
+  year: CURRENT_YEAR,
   schoolName: 'THPT HUỲNH TẤN PHÁT',
   deptName: 'TỔ VẬT LÝ - GDTC',
-  tournamentName: 'GIẢI THỂ THAO HỌC SINH 2026',
+  tournamentName: `GIẢI THỂ THAO HỌC SINH NĂM ${CURRENT_YEAR}`,
   organizer: 'admin',
-  referee: 'Thầy Trần Quốc Bảo (Trọng tài chính)',
-  secretary: 'Cô Lê Thị Mai (Thư ký bàn)',
+  referee: 'Thầy Bồ Công Lâm (Trọng tài chính)',
+  secretary: 'Cô Trần Thị Thu Hồng (Thư ký bàn)',
   activeSportId: 'volleyball',
+  activeCategoryId: 'ALL',
   customGroups: ['Khối 10', 'Khối 11', 'Khối 12'],
   rankingCriteria: DEFAULT_RANKING_CRITERIA,
   themeColor: 'blue',
   e2eeEnabled: true,
-  e2eePassphraseHash: 'default_hash_sport2026',
+  e2eePassphraseHash: `default_hash_sport${CURRENT_YEAR}`,
 };
 
 export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
@@ -104,7 +166,29 @@ export const INITIAL_USER_ACCOUNTS: UserAccount[] = [
     email: 'admin@huynhtanphat.edu.vn',
     securityQuestion: 'Trường THPT bạn công tác là gì?',
     securityAnswer: 'Huỳnh Tấn Phát',
-    createdAt: '2026-10-01',
+    createdAt: `${CURRENT_YEAR}-10-01`,
+  },
+  {
+    id: 'U_REF_BADMINTON',
+    username: 'tt_caulong',
+    password: '123456',
+    displayName: 'Thầy Nguyễn Văn Nam',
+    role: 'referee',
+    title: 'Trọng tài Cầu Lông (Đơn & Đôi nam)',
+    assignedSports: ['badminton'],
+    assignedCategories: ['Đơn nam', 'Đôi nam'],
+    createdAt: `${CURRENT_YEAR}-10-05`,
+  },
+  {
+    id: 'U_SEC_VOLLEYBALL',
+    username: 'tk_bongchuyen',
+    password: '123456',
+    displayName: 'Cô Trần Thị Thu Hồng',
+    role: 'secretary',
+    title: 'Thư ký Bóng Chuyền',
+    assignedSports: ['volleyball'],
+    assignedCategories: ['Nam', 'Nữ'],
+    createdAt: `${CURRENT_YEAR}-10-05`,
   },
 ];
 

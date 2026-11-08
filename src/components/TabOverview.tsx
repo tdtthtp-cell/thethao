@@ -51,9 +51,22 @@ export const TabOverview: React.FC<TabOverviewProps> = ({
       {/* Hero Tournament Banner */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-sky-950 to-slate-900 p-6 sm:p-8 text-white shadow-xl border border-sky-900/40">
         <div className="relative z-10 max-w-3xl space-y-3">
-          <div className="inline-flex items-center gap-2 rounded-full bg-sky-500/20 px-3 py-1 text-xs font-semibold text-sky-300 backdrop-blur-md border border-sky-500/30">
-            <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
-            <span>Hệ thống bảo mật mã hóa đầu cuối E2EE AES-256</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="inline-flex items-center gap-2 rounded-full bg-sky-500/20 px-3 py-1 text-xs font-semibold text-sky-300 backdrop-blur-md border border-sky-500/30">
+              <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
+              <span>Hệ thống bảo mật mã hóa đầu cuối E2EE AES-256</span>
+            </div>
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/20 px-3 py-1 text-xs font-bold text-amber-300 backdrop-blur-md border border-amber-500/30">
+              <Calendar className="w-3.5 h-3.5 text-amber-400" />
+              <span>Năm thi đấu: {config.year || new Date().getFullYear()}</span>
+            </div>
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-purple-500/20 px-3 py-1 text-xs font-bold text-purple-300 backdrop-blur-md border border-purple-500/30">
+              <span>{currentSport?.icon || '🏆'}</span>
+              <span>{currentSport?.name || 'Bóng chuyền'}</span>
+              {config.activeCategoryId && config.activeCategoryId !== 'ALL' && (
+                <span>({currentSport?.categories?.find(c => c.id === config.activeCategoryId)?.name || config.activeCategoryId})</span>
+              )}
+            </div>
           </div>
 
           <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white leading-tight">

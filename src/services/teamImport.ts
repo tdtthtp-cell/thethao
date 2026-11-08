@@ -132,50 +132,48 @@ export function parseTeamColor(val: unknown, fallback: string): string {
 export function downloadTeamImportTemplateExcel() {
   const wb = XLSX.utils.book_new();
 
-  // 1. Sheet: DanhSachDoi (Teams list)
+  // 1. Sheet: DanhSachDoi (Teams list) matching exact user structure: 'Tên Đội / VĐV' & 'Bảng / Khối'
   const headers = [
-    'STT',
-    'Tên Đội Thi Đấu (Lớp)',
-    'Khối / Bảng Đấu',
+    'Tên Đội / VĐV',
+    'Bảng / Khối',
     'Giới Tính (Nam / Nữ)',
     'GVCN / HLV Phụ Trách',
     'Số Điện Thoại Liên Hệ',
-    'Số Lượng VĐV Dự Kiến',
     'Màu Áo Thi Đấu',
     'Ghi Chú',
   ];
 
   const sampleRows: (string | number)[][] = [
-    [1, '10A1', 'Khối 10', 'Nam', 'Thầy Trần Văn Nam', '0912345678', 12, 'Xanh dương', 'Đội bóng nam lớp 10A1'],
-    [2, '10A1', 'Khối 10', 'Nữ', 'Cô Lê Thị Hoa', '0987654321', 10, 'Hồng', 'Đội bóng nữ lớp 10A1'],
-    [3, '10A2', 'Khối 10', 'Nam', 'Thầy Nguyễn Văn B', '0903112233', 12, 'Xanh dương', 'Đội bóng nam lớp 10A2'],
-    [4, '10A2', 'Khối 10', 'Nữ', 'Cô Phạm Thị C', '0904223344', 10, 'Hồng', 'Đội bóng nữ lớp 10A2'],
-    [5, '11B1', 'Khối 11', 'Nam', 'Thầy Hoàng Văn D', '0918556677', 12, 'Xanh lá', 'Đội bóng nam lớp 11B1'],
-    [6, '11B1', 'Khối 11', 'Nữ', 'Cô Đặng Thị E', '0919667788', 10, 'Đỏ', 'Đội bóng nữ lớp 11B1'],
-    [7, '11B2', 'Khối 11', 'Nam', 'Thầy Vũ Văn F', '0909778899', 12, 'Xanh lá', 'Đội bóng nam lớp 11B2'],
-    [8, '11B2', 'Khối 11', 'Nữ', 'Cô Bùi Thị G', '0908889900', 10, 'Đỏ', 'Đội bóng nữ lớp 11B2'],
-    [9, '12C1', 'Khối 12', 'Nam', 'Thầy Ngô Văn H', '0933112244', 12, 'Cam', 'Đội bóng nam lớp 12C1'],
-    [10, '12C1', 'Khối 12', 'Nữ', 'Cô Mai Thị K', '0933556688', 10, 'Vàng', 'Đội bóng nữ lớp 12C1'],
+    ['10A7,8', 'K10_ĐC Nam', 'Nam', 'Thầy Nguyễn Văn A', '0912345678', 'Xanh dương', 'Đội nam liên quân 10A7,8'],
+    ['10A5,6', 'K10_ĐC Nam', 'Nam', 'Thầy Trần Văn B', '0987654321', 'Xanh dương', 'Đội nam liên quân 10A5,6'],
+    ['10A2,3', 'K10_ĐC Nam', 'Nam', 'Thầy Lê Văn C', '0903112233', 'Xanh dương', 'Đội nam liên quân 10A2,3'],
+    ['10A1,4', 'K10_ĐC Nam', 'Nam', 'Thầy Phạm Văn D', '0904223344', 'Xanh dương', 'Đội nam liên quân 10A1,4'],
+    ['10A7,8', 'K10_ĐC Nữ', 'Nữ', 'Cô Hoàng Thị E', '0918556677', 'Hồng', 'Đội nữ liên quân 10A7,8'],
+    ['10A5,6', 'K10_ĐC Nữ', 'Nữ', 'Cô Đặng Thị F', '0919667788', 'Hồng', 'Đội nữ liên quân 10A5,6'],
+    ['10A2,3', 'K10_ĐC Nữ', 'Nữ', 'Cô Vũ Thị G', '0909778899', 'Hồng', 'Đội nữ liên quân 10A2,3'],
+    ['10A1,4', 'K10_ĐC Nữ', 'Nữ', 'Cô Bùi Thị H', '0908889900', 'Hồng', 'Đội nữ liên quân 10A1,4'],
+    ['11B3,4', 'K11_ĐC Nam', 'Nam', 'Thầy Ngô Văn K', '0933112244', 'Xanh lá', 'Đội nam liên quân 11B3,4'],
+    ['11B1,2', 'K11_ĐC Nam', 'Nam', 'Thầy Mai Văn L', '0933556688', 'Xanh lá', 'Đội nam liên quân 11B1,2'],
+    ['12C1,3,7', 'K12_ĐC Nam', 'Nam', 'Thầy Bồ Công Lâm', '0911223344', 'Cam', 'Đội nam liên quân 12C1,3,7'],
+    ['12C2,5', 'K12_ĐC Nam', 'Nam', 'Cô Trần Thị Thu Hồng', '0922334455', 'Đỏ', 'Đội nam liên quân 12C2,5'],
   ];
 
   const wsData = XLSX.utils.aoa_to_sheet([headers, ...sampleRows]);
 
   // Set column widths
   wsData['!cols'] = [
-    { wch: 6 },  // STT
-    { wch: 22 }, // Tên Đội Thi Đấu
-    { wch: 16 }, // Khối / Bảng Đấu
+    { wch: 22 }, // Tên Đội / VĐV
+    { wch: 18 }, // Bảng / Khối
     { wch: 20 }, // Giới Tính
     { wch: 26 }, // GVCN / HLV
-    { wch: 18 }, // Số Điện Thoại
-    { wch: 20 }, // Số Lượng VĐV
+    { wch: 20 }, // Số Điện Thoại
     { wch: 18 }, // Màu Áo
     { wch: 30 }, // Ghi Chú
   ];
 
   XLSX.utils.book_append_sheet(wb, wsData, 'DanhSachDoi');
 
-  // 2. Sheet: DanhSachVDV_Doi_10A1 (Illustrating Athletes belonging to Team 10A1)
+  // 2. Sheet: DanhSachVDV_Doi_10A1 (Illustrating Athletes belonging to Team)
   const athleteHeaders = [
     'STT',
     'Họ Và Tên Vận Động Viên',
@@ -189,14 +187,14 @@ export function downloadTeamImportTemplateExcel() {
   ];
 
   const sampleAthleteRows: (string | number)[][] = [
-    [1, 'Nguyễn Văn Hoàng', 10, '10A1', 'Tiền đạo / Chủ công', '2010-05-15', '0912000001', '079201001234', 'Đội trưởng'],
-    [2, 'Trần Quốc Bảo', 1, '10A1', 'Thủ môn', '2010-08-20', '0912000002', '079201001235', 'Thủ môn chính'],
-    [3, 'Lê Tuấn Kiệt', 7, '10A1', 'Tiền vệ cánh', '2010-03-10', '0912000003', '079201001236', 'Cầu thủ'],
-    [4, 'Phạm Minh Đức', 4, '10A1', 'Trung vệ', '2010-11-25', '0912000004', '079201001237', 'Cầu thủ'],
-    [5, 'Võ Gia Huy', 9, '10A1', 'Tiền đạo cắm', '2010-07-12', '0912000005', '079201001238', 'Cầu thủ'],
-    [6, 'Đặng Hoàng Long', 8, '10A1', 'Tiền vệ trung tâm', '2010-09-05', '0912000006', '079201001239', 'Cầu thủ'],
-    [7, 'Bùi Quốc Anh', 2, '10A1', 'Hậu vệ phải', '2010-01-18', '0912000007', '079201001240', 'Cầu thủ'],
-    [8, 'Huỳnh Tấn Tài', 3, '10A1', 'Hậu vệ trái', '2010-12-02', '0912000008', '079201001241', 'Cầu thủ'],
+    [1, 'Nguyễn Văn Hoàng', 10, '10A1,4', 'Tiền đạo / Chủ công', '2010-05-15', '0912000001', '079201001234', 'Đội trưởng'],
+    [2, 'Trần Quốc Bảo', 1, '10A1,4', 'Thủ môn', '2010-08-20', '0912000002', '079201001235', 'Thủ môn chính'],
+    [3, 'Lê Tuấn Kiệt', 7, '10A1,4', 'Tiền vệ cánh', '2010-03-10', '0912000003', '079201001236', 'Cầu thủ'],
+    [4, 'Phạm Minh Đức', 4, '10A1,4', 'Trung vệ', '2010-11-25', '0912000004', '079201001237', 'Cầu thủ'],
+    [5, 'Võ Gia Huy', 9, '10A1,4', 'Tiền đạo cắm', '2010-07-12', '0912000005', '079201001238', 'Cầu thủ'],
+    [6, 'Đặng Hoàng Long', 8, '10A1,4', 'Tiền vệ trung tâm', '2010-09-05', '0912000006', '079201001239', 'Cầu thủ'],
+    [7, 'Bùi Quốc Anh', 2, '10A1,4', 'Hậu vệ phải', '2010-01-18', '0912000007', '079201001240', 'Cầu thủ'],
+    [8, 'Huỳnh Tấn Tài', 3, '10A1,4', 'Hậu vệ trái', '2010-12-02', '0912000008', '079201001241', 'Cầu thủ'],
   ];
 
   const wsAthletes = XLSX.utils.aoa_to_sheet([athleteHeaders, ...sampleAthleteRows]);
@@ -211,23 +209,21 @@ export function downloadTeamImportTemplateExcel() {
     { wch: 24 }, // CCCD
     { wch: 20 }, // Ghi chú
   ];
-  XLSX.utils.book_append_sheet(wb, wsAthletes, 'DanhSachVDV_Doi_10A1');
+  XLSX.utils.book_append_sheet(wb, wsAthletes, 'DanhSachVDV_Doi_10A1,4');
 
   // 3. Sheet: HuongDan
   const guideRows: (string | number)[][] = [
     ['HƯỚNG DẪN CẤU TRÚC DANH SÁCH ĐỘI & DANH SÁCH VẬN ĐỘNG VIÊN'],
     [],
-    ['1. PHÂN BIỆT RÕ 2 KHÁI NIỆM TRONG GIẢI ĐẤU:'],
-    ['• DANH SÁCH ĐỘI (Sheet: DanhSachDoi):', 'Tên của các đội tham gia thi đấu trong toàn giải (Ví dụ: 10A1, 10A2, 11B1, 12C1...). Dùng để xếp lịch thi đấu, chia bảng và hiển thị bảng xếp hạng.'],
-    ['• DANH SÁCH VẬN ĐỘNG VIÊN (Sheet: DanhSachVDV_Doi_10A1):', 'Tên của các vận động viên cụ thể trong 1 đội bóng (Ví dụ: Đội 10A1 gồm 12 vận động viên, mỗi bạn có số áo, vị trí, CCCD). Dùng để quản lý nhân sự, bảo mật CCCD và ghi bàn thắng.'],
+    ['1. CẤU TRÚC DANH SÁCH ĐỘI (Sheet: DanhSachDoi):'],
+    ['• Cột "Tên Đội / VĐV":', 'Bắt buộc. Nhập tên đội thi đấu, ví dụ: 10A7,8; 10A5,6; 10A2,3; 10A1,4 hoặc 10A1, 10A2...'],
+    ['• Cột "Bảng / Khối":', 'Bắt buộc. Nhập khối hoặc bảng (Ví dụ: K10_ĐC Nam, K10_ĐC Nữ, K11_ĐC Nam, Khối 10, Bảng A...). Hệ thống tự động tạo bộ lọc và gom nhóm theo cột này.'],
+    ['• Cột "Giới Tính (Nam / Nữ)":', 'Tùy chọn. Nếu trong tên Bảng/Khối đã có Nam hoặc Nữ (như K10_ĐC Nam), hệ thống sẽ tự động nhận diện giới tính.'],
+    ['• Các cột phụ:', 'GVCN/HLV Phụ Trách, Số Điện Thoại, Màu Áo Thi Đấu, Ghi Chú có thể điền hoặc để trống.'],
     [],
-    ['2. HƯỚNG DẪN ĐIỀN CÁC CỘT TRONG SHEET "DanhSachDoi":'],
-    ['• Cột "Tên Đội Thi Đấu (Lớp)":', 'Bắt buộc. Nhập tên đội thi đấu, ví dụ: 10A1, 10A2, 11B1, 12C2...'],
-    ['• Cột "Khối / Bảng Đấu":', 'Nhập khối hoặc bảng (Khối 10, Khối 11, Bảng A, Bảng B...). Lịch thi đấu và bảng xếp hạng sẽ được tự động phân nhóm theo cột này.'],
-    ['• Cột "Giới Tính":', 'Điền "Nam" hoặc "Nữ". Nếu trong một lớp có cả đội nam và đội nữ, hãy tạo 2 dòng riêng biệt với tên lớp đó.'],
-    ['• Cột "GVCN / HLV Phụ Trách":', 'Họ tên thầy cô phụ trách hoặc huấn luyện viên đội.'],
-    ['• Cột "Số Lượng VĐV Dự Kiến":', 'Số lượng vận động viên đăng ký của đội (ví dụ: 10, 12, 15).'],
-    ['• Cột "Màu Áo Thi Đấu":', 'Có thể điền tên màu tiếng Việt (Xanh dương, Hồng, Đỏ, Xanh lá, Cam, Vàng, Tím, Trắng) hoặc mã màu Hex.'],
+    ['2. PHÂN BIỆT RÕ 2 KHÁI NIỆM TRONG GIẢI ĐẤU:'],
+    ['• DANH SÁCH ĐỘI (Sheet: DanhSachDoi):', 'Tên của các đội tham gia thi đấu trong toàn giải (10A7,8; 10A5,6; 12C1,3,7...). Dùng để lọc theo khối/bảng, bốc thăm và tính điểm bảng xếp hạng.'],
+    ['• DANH SÁCH VẬN ĐỘNG VIÊN (Sheet: DanhSachVDV):', 'Tên của các vận động viên cụ thể trong 1 đội bóng (Nguyễn Văn Hoàng #10, Trần Quốc Bảo #1...). Dùng để quản lý nhân sự, bảo mật CCCD và ghi bàn thắng.'],
     [],
     ['3. CÁCH TẢI LÊN ỨNG DỤNG:'],
     ['• Bước 1:', 'Bạn điền danh sách các đội bóng của giải vào Sheet "DanhSachDoi", sau đó lưu file lại.'],
@@ -356,12 +352,15 @@ export async function parseTeamsFromExcel(
           str.includes('ten doi') ||
           str.includes('tên lớp') ||
           str.includes('ten lop') ||
+          str.includes('đội / vđv') ||
+          str.includes('doi / vdv') ||
           str === 'đội' ||
           str === 'doi' ||
           str === 'lớp' ||
           str === 'lop' ||
           str === 'team' ||
-          str === 'team name'
+          str === 'team name' ||
+          str === 'tên đội / vđv'
         ) {
           tempMap['name'] = colIdx;
         } else if (
@@ -370,7 +369,9 @@ export async function parseTeamsFromExcel(
           str.includes('bảng') ||
           str.includes('bang') ||
           str === 'group' ||
-          str === 'stage'
+          str === 'stage' ||
+          str.includes('bảng / khối') ||
+          str.includes('bang / khoi')
         ) {
           tempMap['group'] = colIdx;
         } else if (
@@ -403,9 +404,8 @@ export async function parseTeamsFromExcel(
         ) {
           tempMap['phone'] = colIdx;
         } else if (
-          str.includes('số lượng') ||
+          str.includes('số lượng vđv') ||
           str.includes('so luong') ||
-          str.includes('vđv') ||
           str.includes('thành viên')
         ) {
           tempMap['count'] = colIdx;
@@ -430,15 +430,19 @@ export async function parseTeamsFromExcel(
     // Default fallback columns if no explicit header matched
     if (headerRowIdx === -1) {
       headerRowIdx = 0;
-      colMap = {
-        name: 1,
-        group: 2,
-        gender: 3,
-        coach: 4,
-        phone: 5,
-        count: 6,
-        color: 7,
-      };
+      const firstRowLen = rawRows[0]?.length || 0;
+      if (firstRowLen <= 2) {
+        colMap = { name: 0, group: 1 };
+      } else {
+        colMap = {
+          name: 1,
+          group: 2,
+          gender: 3,
+          coach: 4,
+          phone: 5,
+          color: 6,
+        };
+      }
     }
 
     // Parse data rows
@@ -468,9 +472,21 @@ export async function parseTeamsFromExcel(
         gender = normalizeGender(rawGenderCell, sheetDefaultGender);
       } else {
         const lowerRaw = `${rawName} ${rawGroup}`.toLowerCase();
-        if (lowerRaw.includes('(nữ)') || lowerRaw.includes('- nữ') || lowerRaw.includes(' nữ')) {
+        if (
+          lowerRaw.includes('đc nữ') ||
+          lowerRaw.includes('_nữ') ||
+          lowerRaw.includes('- nữ') ||
+          lowerRaw.includes('(nữ)') ||
+          lowerRaw.includes(' nữ')
+        ) {
           gender = 'female';
-        } else if (lowerRaw.includes('(nam)') || lowerRaw.includes('- nam') || lowerRaw.includes(' nam')) {
+        } else if (
+          lowerRaw.includes('đc nam') ||
+          lowerRaw.includes('_nam') ||
+          lowerRaw.includes('- nam') ||
+          lowerRaw.includes('(nam)') ||
+          lowerRaw.includes(' nam')
+        ) {
           gender = 'male';
         }
       }

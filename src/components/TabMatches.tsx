@@ -19,6 +19,8 @@ import {
   Keyboard,
   GitBranch,
   FileDown,
+  Shield,
+  Lock,
 } from 'lucide-react';
 import { Match, Sport, StandingItem, Team, TournamentConfig, UserProfile } from '../types';
 import { playRefereeWhistle, playScoreChime } from '../services/sound';
@@ -104,13 +106,44 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
     return () => clearInterval(timer);
   }, [matches, onUpdateMatch]);
 
+  // Check if current user has permission to manage/score/edit this match
+  const canManageMatch = (m: Match): boolean => {
+    if (user.role === 'admin') return true;
+    if (user.role !== 'referee' && user.role !== 'secretary') return false;
+
+    // Check sport assignment
+    if (user.assignedSports && user.assignedSports.length > 0) {
+      const matchSport = m.sportId || config.activeSportId;
+      if (!user.assignedSports.includes(matchSport)) return false;
+    }
+
+    // Check category assignment
+    if (user.assignedCategories && user.assignedCategories.length > 0) {
+      if (m.categoryId && !user.assignedCategories.includes(m.categoryId)) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
   const filteredMatches = matches.filter((m) => {
+    // 1. Sport filter
+    if (m.sportId && m.sportId !== config.activeSportId) return false;
+
+    // 2. Category filter
+    if (config.activeCategoryId && config.activeCategoryId !== 'ALL') {
+      if (m.categoryId && m.categoryId !== config.activeCategoryId) return false;
+    }
+
+    // 3. Stage & Status filter
     const matchGrp = filterGroup === 'ALL' || m.stage === filterGroup;
     const matchStat = filterStatus === 'ALL' || m.status === filterStatus;
     return matchGrp && matchStat;
   });
 
-  const activeMatch = matches.find((m) => m.id === activeScoringMatchId) || matches[0];
+  const activeMatch = matches.find((m) => m.id === activeScoringMatchId) || filteredMatches[0] || matches[0];
+  const canManageActiveMatch = activeMatch ? canManageMatch(activeMatch) : false;
 
   const handleScoreChange = (
     matchId: string,
@@ -253,9 +286,13 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
 
     const homeTeam: Team = teams[0];
     const awayTeam: Team = teams[1];
+    const activeCategory = currentSport?.categories?.find((c) => c.id === config.activeCategoryId);
 
     const newM: Match = {
       id: 'M_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      sportId: config.activeSportId,
+      categoryId: config.activeCategoryId && config.activeCategoryId !== 'ALL' ? config.activeCategoryId : undefined,
+      categoryName: activeCategory?.name,
       code: `Trận ${(matches.length + 1).toString().padStart(2, '0')}`,
       stage: config.customGroups[0] || 'Khối 10',
       pitch: 'Sân 1',
@@ -276,7 +313,7 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
       events: [],
       refereeName: config.referee,
       secretaryName: config.secretary,
-      notes: 'Trận đấu tạo thủ công',
+      notes: activeCategory ? `Nội dung: ${activeCategory.name}` : 'Trận đấu tạo thủ công',
     };
     onAddMatch(newM);
     onOpenEditMatch(newM);
@@ -293,12 +330,19 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
       {/* Top Header & Scheduling Actions */}
       <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-sky-600" />
-            Lịch Thi Đấu & Cập Nhật Tỉ Số Trực Tiếp
-          </h2>
-          <p className="text-xs text-slate-400">
-            Môn thi đấu hiện tại: <strong className="text-sky-600 dark:text-sky-400">{currentSport?.name || 'Bóng chuyền'}</strong> ({maxSets} set)
+          <div className="flex items-center gap-2">
+            <span className="text-xl">{currentSport?.icon || '🏆'}</span>
+            <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+              <Calendar className="w-5 h-5 text-sky-600" />
+              Lịch Thi Đấu & Cập Nhật Tỉ Số Trực Tiếp
+            </h2>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            Đang quản lý: <strong className="text-sky-600 dark:text-sky-400">{currentSport?.name || 'Bóng chuyền'}</strong>
+            {config.activeCategoryId && config.activeCategoryId !== 'ALL' && (
+              <span> · Nội dung: <strong className="text-purple-600 dark:text-purple-400">{currentSport?.categories?.find(c => c.id === config.activeCategoryId)?.name || config.activeCategoryId}</strong></span>
+            )}
+            {' '}({maxSets} set · {config.year || new Date().getFullYear()})
           </p>
         </div>
 
@@ -372,12 +416,26 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
       {/* LIVE SCORING CONSOLE */}
       {activeMatch && canScore && (
         <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white p-6 sm:p-8 rounded-3xl border border-sky-800/60 shadow-xl space-y-6">
+          {!canManageActiveMatch && !isAdmin && (
+            <div className="p-3 bg-amber-500/20 border border-amber-500/40 rounded-2xl text-amber-200 text-xs flex items-center gap-2">
+              <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>
+                <strong>Chế độ chỉ xem:</strong> Trận đấu này ({activeMatch.code}) không nằm trong môn hoặc nội dung bạn được phân công. Bạn không có quyền thay đổi điểm số hoặc thời gian.
+              </span>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-white/10">
             <div className="flex items-center gap-2">
               <span className="px-3 py-1 bg-sky-500 text-slate-950 text-xs font-black rounded-lg">
                 {activeMatch.code}
               </span>
               <span className="text-xs text-slate-300 font-semibold">{activeMatch.stage} · {activeMatch.pitch}</span>
+              {activeMatch.categoryName && (
+                <span className="text-xs px-2 py-0.5 rounded-md bg-purple-500/30 text-purple-200 border border-purple-400/30 font-medium">
+                  {activeMatch.categoryName}
+                </span>
+              )}
               {activeMatch.status === 'LIVE' && (
                 <span className="flex items-center gap-1.5 text-xs font-bold text-rose-400">
                   <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
@@ -780,7 +838,7 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
 
                   <div className="flex items-center gap-2">
                     {/* Edit Match Schedule Button */}
-                    {(isAdmin || canScore) && (
+                    {(isAdmin || (canScore && canManageMatch(m))) && (
                       <button
                         onClick={() => onOpenEditMatch(m)}
                         className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5"
@@ -791,7 +849,7 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
                       </button>
                     )}
 
-                    {canScore && (
+                    {canScore && canManageMatch(m) ? (
                       <>
                         <button
                           type="button"
@@ -816,6 +874,16 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
                           <span>Bàn Tỉ Số</span>
                         </button>
                       </>
+                    ) : (
+                      canScore && !isAdmin && (
+                        <span
+                          className="px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800/60 text-slate-500 rounded-xl text-[11px] font-medium flex items-center gap-1 border border-slate-200/60 dark:border-slate-800"
+                          title="Bạn không được phân công môn hoặc nội dung thi đấu này"
+                        >
+                          <Lock className="w-3 h-3 text-slate-400" />
+                          <span>Ngoài phân công</span>
+                        </span>
+                      )
                     )}
 
                     <button

@@ -8,6 +8,8 @@ export interface UserProfile {
   email?: string;
   avatarUrl?: string;
   authProvider?: 'local' | 'google';
+  assignedSports?: string[]; // IDs of sports assigned to this referee/secretary (e.g. ['badminton'])
+  assignedCategories?: string[]; // IDs or names of categories assigned (e.g. ['Đơn nam', 'Đôi nam nữ'])
 }
 
 export interface UserAccount {
@@ -21,6 +23,8 @@ export interface UserAccount {
   securityQuestion?: string;
   securityAnswer?: string;
   createdAt: string;
+  assignedSports?: string[];
+  assignedCategories?: string[];
 }
 
 export type RankingCriterionType =
@@ -39,7 +43,14 @@ export interface RankingCriterionConfig {
   order: number;
 }
 
-export type SportType = 'volleyball' | 'badminton' | 'tabletennis' | 'football' | string;
+export type SportType = 'volleyball' | 'badminton' | 'tabletennis' | 'football' | 'shuttlecock' | string;
+
+export interface SportCategory {
+  id: string;
+  name: string; // e.g. "Nam", "Nữ", "Đơn nam", "Đơn nữ", "Đôi nam", "Đôi nữ", "Đôi nam nữ"
+  gender?: 'male' | 'female' | 'mixed';
+  type?: 'singles' | 'doubles' | 'team';
+}
 
 export interface Sport {
   id: string;
@@ -52,6 +63,7 @@ export interface Sport {
   ptsLoss: number;
   icon?: string;
   description?: string;
+  categories?: SportCategory[]; // Multiple categories / events per sport
 }
 
 export type PointScheme = 'standard' | 'custom';
@@ -62,6 +74,9 @@ export type TeamGender = 'male' | 'female' | 'mixed';
 
 export interface Team {
   id: string;
+  sportId?: string; // Sport this team participates in
+  categoryId?: string; // Event/category (e.g. 'Đơn nam', 'Đôi nam', 'Nam')
+  categoryName?: string;
   name: string;
   group: string;
   gender?: TeamGender | string;
@@ -72,9 +87,11 @@ export interface Team {
 
 export interface Athlete {
   id: string;
-  name: string;
   teamId: string;
   teamName: string;
+  sportId?: string;
+  categoryId?: string;
+  name: string;
   group: string;
   jerseyNumber: number;
   position: string;
@@ -117,6 +134,9 @@ export interface MatchTimer {
 
 export interface Match {
   id: string;
+  sportId?: string; // which sport this match belongs to (e.g. 'volleyball', 'badminton')
+  categoryId?: string; // which category/event (e.g. 'cat_male', 'cat_ms')
+  categoryName?: string; // display name (e.g. 'Nam', 'Đơn nam', 'Đôi nam nữ')
   code: string;
   stage: string;
   pitch: string;
@@ -135,6 +155,7 @@ export interface Match {
 }
 
 export interface TournamentConfig {
+  year: number; // Actual tournament year (e.g. new Date().getFullYear())
   schoolName: string;
   deptName: string;
   tournamentName: string;
@@ -142,6 +163,7 @@ export interface TournamentConfig {
   referee: string;
   secretary: string;
   activeSportId: string;
+  activeCategoryId?: string; // 'ALL' or specific category id / name
   sportType?: SportType;
   matchSetsRule?: number;
   customGroups: string[];

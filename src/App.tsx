@@ -229,7 +229,19 @@ export default function App() {
 
     // Group teams
     config.customGroups.forEach((grp) => {
-      const groupTeams = teams.filter((t) => t.group === grp);
+      const groupTeams = teams.filter((t) => {
+        if (t.group !== grp) return false;
+        if (t.sportId && t.sportId !== config.activeSportId) return false;
+        if (
+          config.activeCategoryId &&
+          config.activeCategoryId !== 'ALL' &&
+          t.categoryId &&
+          t.categoryId !== config.activeCategoryId
+        ) {
+          return false;
+        }
+        return true;
+      });
       const teamStats: Record<string, StandingItem> = {};
 
       groupTeams.forEach((t) => {
@@ -249,9 +261,20 @@ export default function App() {
       });
 
       // Filter matches in this group that have scores recorded or finished
-      const groupMatches = matches.filter(
-        (m) => m.stage === grp && (m.status === 'FINISHED' || m.status === 'LIVE')
-      );
+      const groupMatches = matches.filter((m) => {
+        if (m.stage !== grp) return false;
+        if (m.status !== 'FINISHED' && m.status !== 'LIVE') return false;
+        if (m.sportId && m.sportId !== config.activeSportId) return false;
+        if (
+          config.activeCategoryId &&
+          config.activeCategoryId !== 'ALL' &&
+          m.categoryId &&
+          m.categoryId !== config.activeCategoryId
+        ) {
+          return false;
+        }
+        return true;
+      });
 
       groupMatches.forEach((m) => {
         const hStats = teamStats[m.home.id];
@@ -734,6 +757,20 @@ export default function App() {
       <Header
         config={config}
         user={currentUser}
+        sports={sports}
+        onSelectSport={(sportId) => {
+          handleUpdateConfig((prev) => ({
+            ...prev,
+            activeSportId: sportId,
+            activeCategoryId: 'ALL',
+          }));
+        }}
+        onSelectCategory={(catId) => {
+          handleUpdateConfig((prev) => ({
+            ...prev,
+            activeCategoryId: catId,
+          }));
+        }}
         activeTab={activeTab}
         onTabChange={handleTabChange}
         onOpenReports={() => setIsReportsModalOpen(true)}

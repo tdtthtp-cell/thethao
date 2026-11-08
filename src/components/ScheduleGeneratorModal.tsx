@@ -73,12 +73,21 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Filter teams for current active sport and category
+  const activeSportTeams = useMemo(() => {
+    return teams.filter((t) => {
+      if (t.sportId && t.sportId !== config.activeSportId) return false;
+      if (config.activeCategoryId && config.activeCategoryId !== 'ALL' && t.categoryId && t.categoryId !== config.activeCategoryId) return false;
+      return true;
+    });
+  }, [teams, config.activeSportId, config.activeCategoryId]);
+
   // Filter teams for Group stage
   const availableGroups = config.customGroups || [];
   const targetGroups = selectedGroup === 'ALL' ? availableGroups : [selectedGroup];
 
   // Helper to calculate total teams in selected group
-  const teamsInSelection = teams.filter(
+  const teamsInSelection = activeSportTeams.filter(
     (t) => selectedGroup === 'ALL' || t.group === selectedGroup
   );
 
@@ -99,7 +108,7 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
   let matchIndex = matches.length + 1;
 
   targetGroups.forEach((grp) => {
-    const grpTeams = teams.filter((t) => t.group === grp);
+    const grpTeams = activeSportTeams.filter((t) => t.group === grp);
     if (grpTeams.length < 2) return;
 
     // Leg 1
@@ -366,6 +375,8 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
 
       return {
         id: 'M_' + Date.now() + '_' + (seq + idx),
+        sportId: config.activeSportId,
+        categoryId: config.activeCategoryId && config.activeCategoryId !== 'ALL' ? config.activeCategoryId : undefined,
         code: `Trận ${(seq + idx).toString().padStart(2, '0')}`,
         stage: item.stage,
         pitch: item.pitch,
@@ -426,6 +437,8 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
 
       return {
         id: 'M_KO_' + Date.now() + '_' + (seq + idx),
+        sportId: config.activeSportId,
+        categoryId: config.activeCategoryId && config.activeCategoryId !== 'ALL' ? config.activeCategoryId : undefined,
         code: prefix,
         stage: pair.stageTitle,
         pitch: koPitch,

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Trophy } from 'lucide-react';
-import { Sport } from '../types';
+import { Sport, SportCategory } from '../types';
 
 interface SportModalProps {
   sport?: Sport | null;
@@ -24,10 +24,65 @@ export const SportModal: React.FC<SportModalProps> = ({
   const [ptsDraw, setPtsDraw] = useState<number>(sport?.ptsDraw || 0);
   const [ptsLoss, setPtsLoss] = useState<number>(sport?.ptsLoss || 0);
   const [description, setDescription] = useState(sport?.description || '');
+  const [categories, setCategories] = useState<SportCategory[]>(
+    sport?.categories || [
+      { id: 'cat_male', name: 'Nam', gender: 'male' },
+      { id: 'cat_female', name: 'Nữ', gender: 'female' },
+    ]
+  );
+  const [newCatName, setNewCatName] = useState('');
+
+  const applyCategoryPreset = (preset: 'team_gender' | 'racket' | 'tug') => {
+    if (preset === 'team_gender') {
+      setCategories([
+        { id: 'vb_male', name: 'Nam', gender: 'male', type: 'team' },
+        { id: 'vb_female', name: 'Nữ', gender: 'female', type: 'team' },
+      ]);
+    } else if (preset === 'racket') {
+      setCategories([
+        { id: 'cat_ms', name: 'Đơn nam', gender: 'male', type: 'singles' },
+        { id: 'cat_ws', name: 'Đơn nữ', gender: 'female', type: 'singles' },
+        { id: 'cat_md', name: 'Đôi nam', gender: 'male', type: 'doubles' },
+        { id: 'cat_wd', name: 'Đôi nữ', gender: 'female', type: 'doubles' },
+        { id: 'cat_xd', name: 'Đôi nam nữ', gender: 'mixed', type: 'doubles' },
+      ]);
+    } else if (preset === 'tug') {
+      setCategories([
+        { id: 'cat_tm', name: 'Đội nam', gender: 'male', type: 'team' },
+        { id: 'cat_tw', name: 'Đội nữ', gender: 'female', type: 'team' },
+        { id: 'cat_tx', name: 'Đội nam nữ', gender: 'mixed', type: 'team' },
+      ]);
+    }
+  };
+
+  const handleAddCategory = () => {
+    const val = newCatName.trim();
+    if (!val) return;
+    if (categories.some((c) => c.name.toLowerCase() === val.toLowerCase())) {
+      alert('Nội dung này đã tồn tại trong môn đấu!');
+      return;
+    }
+    const id = 'CAT_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    let gender: 'male' | 'female' | 'mixed' = 'mixed';
+    if (val.toLowerCase().includes('nữ') && !val.toLowerCase().includes('nam nữ')) gender = 'female';
+    else if (val.toLowerCase().includes('nam') && !val.toLowerCase().includes('nam nữ')) gender = 'male';
+
+    setCategories([...categories, { id, name: val, gender }]);
+    setNewCatName('');
+  };
+
+  const handleRemoveCategory = (catId: string) => {
+    if (categories.length <= 1) {
+      alert('Một môn thi đấu phải có ít nhất 1 nội dung thi đấu!');
+      return;
+    }
+    setCategories(categories.filter((c) => c.id !== catId));
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return alert('Vui lòng nhập tên môn thi đấu!');
+    if (categories.length === 0) return alert('Vui lòng tạo ít nhất 1 nội dung thi đấu cho môn!');
 
     const id = sport?.id || 'SPORT_' + Date.now();
     const code = name.toUpperCase().replace(/\s+/g, '_');
@@ -42,13 +97,14 @@ export const SportModal: React.FC<SportModalProps> = ({
       ptsDraw: Number(ptsDraw) || 0,
       ptsLoss: Number(ptsLoss) || 0,
       description: description.trim(),
+      categories,
     });
     onClose();
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 overflow-y-auto">
-      <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-5 my-6">
+      <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-5 my-6">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2.5">
@@ -59,7 +115,7 @@ export const SportModal: React.FC<SportModalProps> = ({
               <h3 className="font-bold text-base text-slate-900 dark:text-white">
                 {sport ? 'Chỉnh Sửa Môn Thi Đấu' : 'Thêm Môn Thi Đấu Mới'}
               </h3>
-              <p className="text-xs text-slate-400">Cấu hình tên môn, số set và cách tính điểm</p>
+              <p className="text-xs text-slate-400">Cấu hình tên môn, các nội dung thi đấu và quy tắc điểm</p>
             </div>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
@@ -77,9 +133,92 @@ export const SportModal: React.FC<SportModalProps> = ({
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="VD: Cầu mây, Bóng rổ, Kéo co, Cờ vua..."
+              placeholder="VD: Bóng chuyền, Cầu lông, Bóng đá, Bóng bàn, Đá cầu..."
               className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none font-bold"
             />
+          </div>
+
+          {/* Categories Management (Nội Dung Thi Đấu) */}
+          <div className="p-3.5 bg-slate-50 dark:bg-slate-950/70 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                Các Nội Dung Thi Đấu ({categories.length})
+              </label>
+              <span className="text-[10px] text-slate-400">Quản lý riêng biệt</span>
+            </div>
+
+            {/* Quick Presets */}
+            <div className="flex flex-wrap gap-1.5 text-[11px]">
+              <span className="text-slate-400 text-[10px] self-center mr-1">Mẫu nhanh:</span>
+              <button
+                type="button"
+                onClick={() => applyCategoryPreset('team_gender')}
+                className="px-2 py-0.5 rounded-lg bg-sky-100 hover:bg-sky-200 dark:bg-sky-950 dark:hover:bg-sky-900 text-sky-800 dark:text-sky-200 font-semibold cursor-pointer"
+                title="Bóng chuyền, Bóng đá: Nam, Nữ"
+              >
+                Nam, Nữ
+              </button>
+              <button
+                type="button"
+                onClick={() => applyCategoryPreset('racket')}
+                className="px-2 py-0.5 rounded-lg bg-indigo-100 hover:bg-indigo-200 dark:bg-indigo-950 dark:hover:bg-indigo-900 text-indigo-800 dark:text-indigo-200 font-semibold cursor-pointer"
+                title="Cầu lông, Bóng bàn: Đơn nam, đơn nữ, đôi nam, đôi nữ, đôi nam nữ"
+              >
+                Đơn & Đôi (5 nội dung)
+              </button>
+              <button
+                type="button"
+                onClick={() => applyCategoryPreset('tug')}
+                className="px-2 py-0.5 rounded-lg bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950 dark:hover:bg-emerald-900 text-emerald-800 dark:text-emerald-200 font-semibold cursor-pointer"
+                title="Kéo co: Đội nam, đội nữ, đội nam nữ"
+              >
+                Kéo co (3 nội dung)
+              </button>
+            </div>
+
+            {/* Category list chips */}
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              {categories.map((cat) => (
+                <span
+                  key={cat.id}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 shadow-2xs"
+                >
+                  <span>{cat.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveCategory(cat.id)}
+                    className="text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                    title={`Xóa nội dung ${cat.name}`}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+
+            {/* Add custom category */}
+            <div className="flex items-center gap-2 pt-1">
+              <input
+                type="text"
+                value={newCatName}
+                onChange={(e) => setNewCatName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleAddCategory();
+                  }
+                }}
+                placeholder="Thêm nội dung khác (VD: Chạy 100m, Tiếp sức...)"
+                className="flex-1 px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleAddCategory}
+                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                + Thêm
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -92,9 +231,9 @@ export const SportModal: React.FC<SportModalProps> = ({
                 onChange={(e) => setMaxSets(Number(e.target.value))}
                 className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
               >
-                <option value={1}>1 Set / 1 Hiệp chính</option>
-                <option value={3}>3 Set (Thắng 2)</option>
-                <option value={5}>5 Set (Thắng 3)</option>
+                <option value={1}>1 Set / 1 Hiệp chính (Bóng đá)</option>
+                <option value={3}>3 Set / Thắng 2 (Bóng chuyền, Cầu lông, Bóng bàn)</option>
+                <option value={5}>5 Set / Thắng 3 (Bóng chuyền nâng cao)</option>
               </select>
             </div>
 
@@ -162,13 +301,13 @@ export const SportModal: React.FC<SportModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl"
+              className="px-4 py-2 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl cursor-pointer"
             >
               Hủy
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl transition shadow-xs"
+              className="px-5 py-2 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl transition shadow-xs cursor-pointer"
             >
               Lưu Môn Thi Đấu
             </button>
