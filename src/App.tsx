@@ -870,6 +870,27 @@ export default function App() {
             onApproveAthlete={handleApproveAthlete}
             onApproveMultipleAthletes={handleApproveMultipleAthletes}
             onImportMultipleAthletes={handleImportMultipleAthletes}
+            onAddAthleteForTeam={(team) => {
+              setEditingAthlete({
+                id: '',
+                name: '',
+                teamId: team.id,
+                teamName: team.name,
+                group: team.group,
+                jerseyNumber: 10,
+                position: 'Tiền đạo / Chủ công',
+                dateOfBirth: '2010-01-01',
+                nationalIdEncrypted: '',
+                phoneEncrypted: '',
+                status: currentUser.role === 'admin' ? 'approved' : 'pending',
+                registeredAt: new Date().toISOString().slice(0, 10),
+                goalsOrPoints: 0,
+                yellowCards: 0,
+                redCards: 0,
+                mvpCount: 0,
+              });
+              setIsAthleteModalOpen(true);
+            }}
           />
         )}
 

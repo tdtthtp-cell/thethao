@@ -101,6 +101,7 @@ export interface Athlete {
   status: 'approved' | 'pending' | 'needs_revision';
   registeredAt: string;
   avatarUrl?: string;
+  isCaptain?: boolean;
   goalsOrPoints: number;
   yellowCards: number;
   redCards: number;

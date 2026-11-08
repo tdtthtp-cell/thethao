@@ -21,6 +21,10 @@ import {
   Eye,
   Layers,
   LayoutGrid,
+  LayoutList,
+  Table as TableIcon,
+  Maximize2,
+  Minimize2,
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
@@ -134,6 +138,62 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
     const mixed = currentSportTeams.filter((t) => t.gender === 'mixed').length;
     return { total, male, female, mixed };
   }, [currentSportTeams]);
+
+  // View mode: 'by_group' (theo bảng / khối), 'table' (bảng tổng hợp gọn gàng), 'grid' (lưới thẻ)
+  const [viewMode, setViewMode] = useState<'by_group' | 'table' | 'grid'>('by_group');
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  // Grouped teams by group / block
+  const teamsByGroup = useMemo(() => {
+    const map: Record<string, Team[]> = {};
+    config.customGroups.forEach((g) => {
+      map[g] = [];
+    });
+    filteredTeams.forEach((t) => {
+      const g = t.group || 'Khác';
+      if (!map[g]) map[g] = [];
+      map[g].push(t);
+    });
+    return map;
+  }, [filteredTeams, config.customGroups]);
+
+  const handleToggleGroupCollapse = (grp: string) => {
+    setCollapsedGroups((prev) => ({ ...prev, [grp]: !prev[grp] }));
+  };
+
+  const handleExpandAllGroups = () => {
+    setCollapsedGroups({});
+  };
+
+  const handleCollapseAllGroups = () => {
+    const next: Record<string, boolean> = {};
+    Object.keys(teamsByGroup).forEach((g) => {
+      next[g] = true;
+    });
+    setCollapsedGroups(next);
+  };
+
+  const handleOpenAddTeamForGroup = (groupName: string) => {
+    setEditingTeam(null);
+    setNewTeamName('');
+    setNewTeamGroup(groupName);
+    setNewTeamGender('male');
+    setNewTeamCoach('');
+    setNewTeamColor('#0284c7');
+    setIsAddingTeam(true);
+  };
+
+  const handleToggleGroupSelect = (grpTeamIds: string[]) => {
+    if (grpTeamIds.length === 0) return;
+    const allSelected = grpTeamIds.every((id) => selectedTeamIds.includes(id));
+    if (allSelected) {
+      const set = new Set(grpTeamIds);
+      setSelectedTeamIds((prev) => prev.filter((id) => !set.has(id)));
+    } else {
+      const set = new Set([...selectedTeamIds, ...grpTeamIds]);
+      setSelectedTeamIds(Array.from(set));
+    }
+  };
 
   // Bulk selection helpers
   const handleToggleTeam = (id: string) => {
@@ -395,17 +455,63 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
           </select>
         </div>
 
-        {/* Bulk select toggle */}
-        {filteredTeams.length > 0 && (
-          <div className="flex items-center gap-2">
+        {/* View Mode Switcher and Quick Bulk Actions */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Segmented View Mode */}
+          <div className="flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200/80 dark:border-slate-700">
             <button
+              type="button"
+              onClick={() => setViewMode('by_group')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                viewMode === 'by_group'
+                  ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="Xem danh sách đội gom nhóm theo Bảng / Khối thi đấu gọn gàng"
+            >
+              <LayoutList className="w-3.5 h-3.5" />
+              <span>Theo Bảng / Khối</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                viewMode === 'table'
+                  ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="Xem toàn bộ danh sách đội dạng bảng tổng hợp"
+            >
+              <TableIcon className="w-3.5 h-3.5" />
+              <span>Bảng Tổng Hợp</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode('grid')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                viewMode === 'grid'
+                  ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-2xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+              title="Xem danh sách dạng thẻ trực quan"
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Lưới Thẻ</span>
+            </button>
+          </div>
+
+          {filteredTeams.length > 0 && (
+            <button
+              type="button"
               onClick={handleToggleAllTeams}
-              className="px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition flex items-center gap-1.5 cursor-pointer"
+              className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition flex items-center gap-1.5 cursor-pointer"
             >
               {areAllFilteredTeamsSelected ? (
                 <>
                   <CheckSquare className="w-3.5 h-3.5 text-sky-600" />
-                  <span>Bỏ chọn tất cả</span>
+                  <span>Bỏ chọn</span>
                 </>
               ) : (
                 <>
@@ -414,11 +520,71 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
                 </>
               )}
             </button>
+          )}
+        </div>
+      </div>
+
+      {/* 4. Quick Group Selector Chips & Expand/Collapse All (Only when in by_group mode) */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-slate-400 font-medium mr-1">Lọc nhanh:</span>
+          <button
+            type="button"
+            onClick={() => setSelectedGroup('ALL')}
+            className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+              selectedGroup === 'ALL'
+                ? 'bg-sky-600 text-white shadow-2xs'
+                : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-800'
+            }`}
+          >
+            Tất cả bảng ({filteredTeams.length})
+          </button>
+          {config.customGroups.map((g) => {
+            const count = (teamsByGroup[g] || []).length;
+            return (
+              <button
+                key={g}
+                type="button"
+                onClick={() => setSelectedGroup(g)}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                  selectedGroup === g
+                    ? 'bg-sky-600 text-white shadow-2xs'
+                    : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-800'
+                }`}
+              >
+                <span>{g}</span>
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${selectedGroup === g ? 'bg-sky-700 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'}`}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {viewMode === 'by_group' && (
+          <div className="flex items-center gap-2 text-xs">
+            <button
+              type="button"
+              onClick={handleExpandAllGroups}
+              className="text-slate-500 hover:text-sky-600 dark:hover:text-sky-400 font-semibold flex items-center gap-1 cursor-pointer transition"
+            >
+              <Maximize2 className="w-3.5 h-3.5" />
+              <span>Mở tất cả</span>
+            </button>
+            <span className="text-slate-300 dark:text-slate-700">·</span>
+            <button
+              type="button"
+              onClick={handleCollapseAllGroups}
+              className="text-slate-500 hover:text-sky-600 dark:hover:text-sky-400 font-semibold flex items-center gap-1 cursor-pointer transition"
+            >
+              <Minimize2 className="w-3.5 h-3.5" />
+              <span>Thu gọn</span>
+            </button>
           </div>
         )}
       </div>
 
-      {/* 4. Teams Cards Grid */}
+      {/* 5. Main View Content */}
       {filteredTeams.length === 0 ? (
         <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 p-12 text-center shadow-2xs">
           <div className="max-w-md mx-auto space-y-3">
@@ -449,13 +615,429 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
                   className="px-4 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer border border-slate-200 dark:border-slate-700"
                 >
                   <Download className="w-4 h-4 text-emerald-600" />
-                  <span>Tải File Mẫu Mẫu (10A1, 10A2...)</span>
+                  <span>Tải File Mẫu (10A1, 10A2...)</span>
                 </button>
               </div>
             )}
           </div>
         </div>
+      ) : viewMode === 'by_group' ? (
+        /* MODE 1: GROUPED BY TABLE / BLOCK (GỌN GÀNG, THEO TỪNG BẢNG/KHỐI) */
+        <div className="space-y-5">
+          {Object.entries(teamsByGroup)
+            .filter(([groupName]) => selectedGroup === 'ALL' || groupName === selectedGroup)
+            .map(([groupName, groupTeams]) => {
+              const isCollapsed = !!collapsedGroups[groupName];
+              const grpTeamIds = groupTeams.map((t) => t.id);
+              const isAllInGrpSelected =
+                grpTeamIds.length > 0 && grpTeamIds.every((id) => selectedTeamIds.includes(id));
+              const maleCount = groupTeams.filter((t) => !t.gender || t.gender === 'male').length;
+              const femaleCount = groupTeams.filter((t) => t.gender === 'female').length;
+              const totalAthletesInGroup = groupTeams.reduce(
+                (sum, t) => sum + (athleteCountByTeam.get(t.id) || 0),
+                0
+              );
+
+              return (
+                <div
+                  key={groupName}
+                  className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xs overflow-hidden transition"
+                >
+                  {/* Group Header Bar */}
+                  <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-50 via-sky-50/30 to-white dark:from-slate-900 dark:via-slate-900 dark:to-slate-900 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleGroupCollapse(groupName)}
+                        className="w-8 h-8 rounded-xl bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 hover:text-sky-600 hover:border-sky-400 transition cursor-pointer"
+                        title={isCollapsed ? 'Mở rộng bảng này' : 'Thu gọn bảng này'}
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                      </button>
+
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3
+                            onClick={() => handleToggleGroupCollapse(groupName)}
+                            className="font-extrabold text-base text-slate-900 dark:text-white cursor-pointer hover:text-sky-600 transition"
+                          >
+                            {groupName}
+                          </h3>
+                          <span className="text-xs text-slate-400">·</span>
+                          <span className="text-xs font-bold text-sky-600 dark:text-sky-400">
+                            {groupTeams.length} đội
+                          </span>
+                        </div>
+
+                        {/* Unboxed Metadata (Zero-pill discipline) */}
+                        <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          <span>{maleCount} Nam</span>
+                          <span aria-hidden="true">·</span>
+                          <span>{femaleCount} Nữ</span>
+                          <span aria-hidden="true">·</span>
+                          <span>{totalAthletesInGroup} VĐV đã đăng ký</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Group Header Controls */}
+                    <div className="flex items-center gap-2">
+                      {groupTeams.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleGroupSelect(grpTeamIds)}
+                          className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-white dark:hover:bg-slate-800 border border-transparent hover:border-slate-200 dark:hover:border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+                          title="Chọn tất cả đội trong bảng này"
+                        >
+                          {isAllInGrpSelected ? (
+                            <CheckSquare className="w-3.5 h-3.5 text-sky-600" />
+                          ) : (
+                            <Square className="w-3.5 h-3.5 text-slate-400" />
+                          )}
+                          <span>Chọn bảng ({groupTeams.length})</span>
+                        </button>
+                      )}
+
+                      {canManage && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenAddTeamForGroup(groupName)}
+                          className="px-3 py-1.5 bg-sky-50 dark:bg-sky-950/60 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 border border-sky-200/80 dark:border-sky-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                          title={`Thêm đội mới vào ${groupName}`}
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Thêm vào {groupName}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Group Table / Roster Body */}
+                  {!isCollapsed && (
+                    <div>
+                      {groupTeams.length === 0 ? (
+                        <div className="p-8 text-center text-xs text-slate-400">
+                          Chưa có đội nào trong bảng {groupName}.{' '}
+                          {canManage && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAddTeamForGroup(groupName)}
+                              className="text-sky-600 font-bold hover:underline ml-1 cursor-pointer"
+                            >
+                              + Thêm đội vào {groupName} ngay
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="bg-slate-50/70 dark:bg-slate-950/50 border-b border-slate-100 dark:border-slate-800 text-[11px] font-bold uppercase text-slate-400">
+                                <th className="py-3 px-4 w-10 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={isAllInGrpSelected}
+                                    onChange={() => handleToggleGroupSelect(grpTeamIds)}
+                                    className="w-3.5 h-3.5 rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
+                                    title="Chọn toàn bộ đội trong bảng này"
+                                  />
+                                </th>
+                                <th className="py-3 px-4 font-bold text-slate-700 dark:text-slate-300">
+                                  Tên Đội / Lớp
+                                </th>
+                                <th className="py-3 px-4 font-bold text-slate-700 dark:text-slate-300">
+                                  Giới Tính
+                                </th>
+                                <th className="py-3 px-4 font-bold text-slate-700 dark:text-slate-300">
+                                  GVCN / Phụ Trách
+                                </th>
+                                <th className="py-3 px-4 font-bold text-slate-700 dark:text-slate-300">
+                                  Thành Viên (VĐV)
+                                </th>
+                                <th className="py-3 px-4 text-right font-bold text-slate-700 dark:text-slate-300">
+                                  Thao Tác
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                              {groupTeams.map((team, idx) => {
+                                const isSelected = selectedTeamIds.includes(team.id);
+                                const memberCount = athleteCountByTeam.get(team.id) || 0;
+
+                                return (
+                                  <tr
+                                    key={team.id}
+                                    className={`transition ${
+                                      isSelected
+                                        ? 'bg-sky-50/60 dark:bg-sky-950/30'
+                                        : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                                    }`}
+                                  >
+                                    <td className="py-3 px-4 w-10 text-center">
+                                      <input
+                                        type="checkbox"
+                                        checked={isSelected}
+                                        onChange={() => handleToggleTeam(team.id)}
+                                        className="w-3.5 h-3.5 rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
+                                        title="Chọn đội này"
+                                      />
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      <div className="flex items-center gap-2.5">
+                                        <span className="font-mono text-xs text-slate-400 w-4">
+                                          {(idx + 1).toString().padStart(2, '0')}
+                                        </span>
+                                        <div
+                                          className="w-3.5 h-3.5 rounded-full border border-white dark:border-slate-800 shrink-0 shadow-2xs"
+                                          style={{
+                                            backgroundColor:
+                                              team.color ||
+                                              (team.gender === 'female' ? '#e11d48' : '#0284c7'),
+                                          }}
+                                          title={`Màu áo: ${team.color || 'Mặc định'}`}
+                                        />
+                                        <span className="font-black text-sm text-slate-900 dark:text-white tracking-tight">
+                                          {team.name}
+                                        </span>
+                                      </div>
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      {team.gender === 'female' ? (
+                                        <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
+                                          <span>👧</span>
+                                          <span>Nữ</span>
+                                        </span>
+                                      ) : team.gender === 'mixed' ? (
+                                        <span className="text-purple-600 dark:text-purple-400 font-semibold flex items-center gap-1">
+                                          <span>👥</span>
+                                          <span>Hỗn hợp</span>
+                                        </span>
+                                      ) : (
+                                        <span className="text-sky-600 dark:text-sky-400 font-semibold flex items-center gap-1">
+                                          <span>👦</span>
+                                          <span>Nam</span>
+                                        </span>
+                                      )}
+                                    </td>
+                                    <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
+                                      {team.coachName || 'Chưa cập nhật'}
+                                    </td>
+                                    <td className="py-3 px-4">
+                                      <button
+                                        type="button"
+                                        onClick={() => onNavigateToAthletes(team.name)}
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900 font-bold transition cursor-pointer"
+                                        title={`Xem danh sách các vận động viên thuộc đội ${team.name}`}
+                                      >
+                                        <Users className="w-3.5 h-3.5" />
+                                        <span>{memberCount} VĐV</span>
+                                        <span className="text-sky-400">→</span>
+                                      </button>
+                                    </td>
+                                    <td className="py-3 px-4 text-right">
+                                      <div className="flex items-center justify-end gap-1">
+                                        {canManage && onAddAthleteForTeam && (
+                                          <button
+                                            type="button"
+                                            onClick={() => onAddAthleteForTeam(team)}
+                                            className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded-lg transition cursor-pointer"
+                                            title={`Thêm VĐV vào đội ${team.name}`}
+                                          >
+                                            <UserPlus className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                        {canManage && (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleOpenEditTeam(team)}
+                                            className="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950/50 rounded-lg transition cursor-pointer"
+                                            title="Sửa thông tin đội"
+                                          >
+                                            <Edit2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                        {isAdmin && (
+                                          <button
+                                            type="button"
+                                            onClick={() => onDeleteTeam(team.id)}
+                                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition cursor-pointer"
+                                            title="Xóa đội này"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+        </div>
+      ) : viewMode === 'table' ? (
+        /* MODE 2: UNIFIED DENSE TABLE (BẢNG TỔNG HỢP TOÀN BỘ) */
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xs overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200/80 dark:border-slate-800 text-[11px] font-bold uppercase text-slate-400">
+                  <th className="py-3.5 px-4 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={areAllFilteredTeamsSelected}
+                      onChange={handleToggleAllTeams}
+                      className="w-3.5 h-3.5 rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
+                      title="Chọn tất cả các đội hiển thị"
+                    />
+                  </th>
+                  <th className="py-3.5 px-4 font-bold text-slate-700 dark:text-slate-300">
+                    Tên Đội / Lớp
+                  </th>
+                  <th className="py-3.5 px-4 font-bold text-slate-700 dark:text-slate-300">
+                    Khối / Bảng
+                  </th>
+                  <th className="py-3.5 px-4 font-bold text-slate-700 dark:text-slate-300">
+                    Giới Tính
+                  </th>
+                  <th className="py-3.5 px-4 font-bold text-slate-700 dark:text-slate-300">
+                    GVCN / HLV
+                  </th>
+                  <th className="py-3.5 px-4 font-bold text-slate-700 dark:text-slate-300">
+                    Số Lượng VĐV
+                  </th>
+                  <th className="py-3.5 px-4 text-right font-bold text-slate-700 dark:text-slate-300">
+                    Thao Tác
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                {filteredTeams.map((team, idx) => {
+                  const isSelected = selectedTeamIds.includes(team.id);
+                  const memberCount = athleteCountByTeam.get(team.id) || 0;
+
+                  return (
+                    <tr
+                      key={team.id}
+                      className={`transition ${
+                        isSelected
+                          ? 'bg-sky-50/70 dark:bg-sky-950/30'
+                          : 'hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                      }`}
+                    >
+                      <td className="py-3.5 px-4 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleTeam(team.id)}
+                          className="w-3.5 h-3.5 rounded text-sky-600 focus:ring-sky-500 cursor-pointer"
+                        />
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-2.5">
+                          <span className="font-mono text-xs text-slate-400 w-5">
+                            {(idx + 1).toString().padStart(2, '0')}
+                          </span>
+                          <div
+                            className="w-3.5 h-3.5 rounded-full border border-white dark:border-slate-800 shrink-0 shadow-2xs"
+                            style={{
+                              backgroundColor:
+                                team.color || (team.gender === 'female' ? '#e11d48' : '#0284c7'),
+                            }}
+                          />
+                          <span className="font-black text-sm text-slate-900 dark:text-white">
+                            {team.name}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3.5 px-4 font-semibold text-slate-700 dark:text-slate-300">
+                        {team.group}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        {team.gender === 'female' ? (
+                          <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
+                            <span>👧</span>
+                            <span>Nữ</span>
+                          </span>
+                        ) : team.gender === 'mixed' ? (
+                          <span className="text-purple-600 dark:text-purple-400 font-semibold flex items-center gap-1">
+                            <span>👥</span>
+                            <span>Hỗn hợp</span>
+                          </span>
+                        ) : (
+                          <span className="text-sky-600 dark:text-sky-400 font-semibold flex items-center gap-1">
+                            <span>👦</span>
+                            <span>Nam</span>
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300">
+                        {team.coachName || 'Chưa cập nhật'}
+                      </td>
+                      <td className="py-3.5 px-4">
+                        <button
+                          type="button"
+                          onClick={() => onNavigateToAthletes(team.name)}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900 font-bold transition cursor-pointer"
+                        >
+                          <Users className="w-3.5 h-3.5" />
+                          <span>{memberCount} VĐV</span>
+                          <span className="text-sky-400">→</span>
+                        </button>
+                      </td>
+                      <td className="py-3.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          {canManage && onAddAthleteForTeam && (
+                            <button
+                              type="button"
+                              onClick={() => onAddAthleteForTeam(team)}
+                              className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded-lg transition cursor-pointer"
+                              title={`Thêm VĐV vào đội ${team.name}`}
+                            >
+                              <UserPlus className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {canManage && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditTeam(team)}
+                              className="p-1.5 text-slate-400 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950/50 rounded-lg transition cursor-pointer"
+                              title="Sửa thông tin đội"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => onDeleteTeam(team.id)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-lg transition cursor-pointer"
+                              title="Xóa đội này"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       ) : (
+        /* MODE 3: CARD GRID VIEW (LƯỚI THẺ TRỰC QUAN) */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredTeams.map((team) => {
             const isSelected = selectedTeamIds.includes(team.id);
@@ -481,26 +1063,23 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
                       title="Chọn đội này để thao tác hàng loạt"
                     />
                     <div>
-                      {/* Gender Badge and Group */}
-                      <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                      {/* Gender and Group - unboxed text */}
+                      <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400 mb-1">
+                        <span className="font-bold text-slate-700 dark:text-slate-300">
                           {team.group}
                         </span>
-
+                        <span aria-hidden="true">·</span>
                         {team.gender === 'female' ? (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/80 dark:text-rose-300 border border-rose-200 dark:border-rose-800 flex items-center gap-1">
-                            <span>👧</span>
-                            <span>Đội Nữ</span>
+                          <span className="text-rose-600 dark:text-rose-400 font-semibold">
+                            👧 Đội Nữ
                           </span>
                         ) : team.gender === 'mixed' ? (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 dark:bg-purple-950/80 dark:text-purple-300 border border-purple-200 dark:border-purple-800 flex items-center gap-1">
-                            <span>👥</span>
-                            <span>Hỗn Hợp</span>
+                          <span className="text-purple-600 dark:text-purple-400 font-semibold">
+                            👥 Hỗn Hợp
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-50 text-sky-700 dark:bg-sky-950/80 dark:text-sky-300 border border-sky-200 dark:border-sky-800 flex items-center gap-1">
-                            <span>👦</span>
-                            <span>Đội Nam</span>
+                          <span className="text-sky-600 dark:text-sky-400 font-semibold">
+                            👦 Đội Nam
                           </span>
                         )}
                       </div>
@@ -511,7 +1090,10 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
                       </h3>
 
                       <p className="text-xs text-slate-400 mt-0.5">
-                        GVCN / HLV: <strong className="text-slate-600 dark:text-slate-300">{team.coachName || 'Chưa cập nhật'}</strong>
+                        GVCN / HLV:{' '}
+                        <strong className="text-slate-600 dark:text-slate-300">
+                          {team.coachName || 'Chưa cập nhật'}
+                        </strong>
                       </p>
                     </div>
                   </div>

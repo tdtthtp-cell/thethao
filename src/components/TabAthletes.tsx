@@ -21,6 +21,14 @@ import {
   ExternalLink,
   FileSpreadsheet,
   Download,
+  LayoutList,
+  Table as TableIcon,
+  ChevronDown,
+  ChevronRight,
+  Maximize2,
+  Minimize2,
+  Check,
+  Plus,
 } from 'lucide-react';
 import { Athlete, Team, TournamentConfig, UserProfile } from '../types';
 import { decryptText, maskSensitive } from '../services/crypto';
@@ -42,6 +50,7 @@ interface TabAthletesProps {
   onApproveAthlete: (athleteId: string, status: Athlete['status']) => void;
   onApproveMultipleAthletes?: (athleteIds: string[], status: Athlete['status']) => void;
   onImportMultipleAthletes?: (athletes: Athlete[]) => void;
+  onAddAthleteForTeam?: (team: Team) => void;
 }
 
 export const TabAthletes: React.FC<TabAthletesProps> = ({
@@ -59,6 +68,7 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
   onApproveAthlete,
   onApproveMultipleAthletes,
   onImportMultipleAthletes,
+  onAddAthleteForTeam,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<string>('ALL');
@@ -172,6 +182,90 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
       selectedAthleteIds.forEach((id) => onApproveAthlete(id, status));
     }
     setSelectedAthleteIds([]);
+  };
+
+  // View mode: 'by_team' (nhóm theo từng đội gọn gàng), 'by_group' (nhóm theo bảng/khối), 'table' (danh sách tổng)
+  const [viewMode, setViewMode] = useState<'by_team' | 'by_group' | 'table'>('by_team');
+  const [collapsedTeams, setCollapsedTeams] = useState<Record<string, boolean>>({});
+  const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
+
+  // Grouped by Team
+  const athletesByTeam = useMemo(() => {
+    const map: Record<string, { team: Team; list: Athlete[] }> = {};
+
+    // Initialize all teams that match selectedGroup or selectedTeamFilter
+    teams.forEach((t) => {
+      if (selectedGroup !== 'ALL' && t.group !== selectedGroup) return;
+      if (
+        selectedTeamFilter !== 'ALL' &&
+        t.id !== selectedTeamFilter &&
+        t.name.toLowerCase() !== selectedTeamFilter.toLowerCase()
+      ) {
+        return;
+      }
+      map[t.id] = { team: t, list: [] };
+    });
+
+    // Populate filtered athletes
+    filteredAthletes.forEach((ath) => {
+      if (!map[ath.teamId]) {
+        map[ath.teamId] = {
+          team: {
+            id: ath.teamId,
+            name: ath.teamName,
+            group: ath.group,
+            color: '#0284c7',
+          },
+          list: [],
+        };
+      }
+      map[ath.teamId].list.push(ath);
+    });
+
+    return map;
+  }, [teams, filteredAthletes, selectedGroup, selectedTeamFilter]);
+
+  // Grouped by Group/Block
+  const athletesByGroup = useMemo(() => {
+    const map: Record<string, Athlete[]> = {};
+    config.customGroups.forEach((g) => {
+      map[g] = [];
+    });
+    filteredAthletes.forEach((ath) => {
+      const g = ath.group || 'Khác';
+      if (!map[g]) map[g] = [];
+      map[g].push(ath);
+    });
+    return map;
+  }, [filteredAthletes, config.customGroups]);
+
+  const handleToggleTeamCollapse = (teamId: string) => {
+    setCollapsedTeams((prev) => ({ ...prev, [teamId]: !prev[teamId] }));
+  };
+
+  const handleExpandAllTeams = () => setCollapsedTeams({});
+  const handleCollapseAllTeams = () => {
+    const next: Record<string, boolean> = {};
+    Object.keys(athletesByTeam).forEach((id) => {
+      next[id] = true;
+    });
+    setCollapsedTeams(next);
+  };
+
+  const handleToggleGroupCollapse = (grp: string) => {
+    setCollapsedGroups((prev) => ({ ...prev, [grp]: !prev[grp] }));
+  };
+
+  const handleToggleTeamAthletesSelect = (teamAthletesIds: string[]) => {
+    if (teamAthletesIds.length === 0) return;
+    const allSelected = teamAthletesIds.every((id) => selectedAthleteIds.includes(id));
+    if (allSelected) {
+      const set = new Set(teamAthletesIds);
+      setSelectedAthleteIds((prev) => prev.filter((id) => !set.has(id)));
+    } else {
+      const set = new Set([...selectedAthleteIds, ...teamAthletesIds]);
+      setSelectedAthleteIds(Array.from(set));
+    }
   };
 
   const stats = useMemo(() => {
@@ -376,8 +470,121 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
         </div>
       </div>
 
-      {/* 4. Active Filter Tags */}
-      {selectedTeamFilter !== 'ALL' && (
+      {/* View Mode Switcher and Quick Action Bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+        {/* View Mode Switcher */}
+        <div className="inline-flex items-center p-1 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
+          <button
+            type="button"
+            onClick={() => setViewMode('by_team')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+              viewMode === 'by_team'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-2xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <LayoutList className="w-3.5 h-3.5" />
+            <span>Theo Đội Thi Đấu</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('by_group')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+              viewMode === 'by_group'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-2xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <Filter className="w-3.5 h-3.5" />
+            <span>Theo Bảng / Khối</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('table')}
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+              viewMode === 'table'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-2xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+            }`}
+          >
+            <TableIcon className="w-3.5 h-3.5" />
+            <span>Danh Sách Tổng</span>
+          </button>
+        </div>
+
+        {/* Expand / Collapse all when in grouped view */}
+        {viewMode !== 'table' && (
+          <div className="flex items-center gap-2 text-xs">
+            <button
+              type="button"
+              onClick={handleExpandAllTeams}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            >
+              <Maximize2 className="w-3 h-3" />
+              <span>Mở tất cả</span>
+            </button>
+            <span className="text-slate-300 dark:text-slate-700">|</span>
+            <button
+              type="button"
+              onClick={handleCollapseAllTeams}
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            >
+              <Minimize2 className="w-3 h-3" />
+              <span>Thu gọn</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Quick Team Chips Bar (when in by_team mode) */}
+      {viewMode === 'by_team' && teams.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+          <span className="text-slate-400 text-[11px] font-semibold shrink-0">Chọn nhanh đội:</span>
+          <button
+            type="button"
+            onClick={() => setSelectedTeamFilter('ALL')}
+            className={`px-2.5 py-1 rounded-xl text-[11px] font-bold shrink-0 transition cursor-pointer ${
+              selectedTeamFilter === 'ALL'
+                ? 'bg-indigo-600 text-white shadow-2xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+            }`}
+          >
+            Tất cả ({teams.length} đội)
+          </button>
+          {teams.map((t) => {
+            const count = athletes.filter((a) => a.teamId === t.id || a.teamName.toLowerCase() === t.name.toLowerCase()).length;
+            const isSelected = selectedTeamFilter === t.id;
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setSelectedTeamFilter(isSelected ? 'ALL' : t.id)}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold shrink-0 transition cursor-pointer ${
+                  isSelected
+                    ? 'bg-indigo-600 text-white shadow-2xs'
+                    : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:border-indigo-400'
+                }`}
+              >
+                <span
+                  className="w-2 h-2 rounded-full shrink-0"
+                  style={{ backgroundColor: t.color || '#6366f1' }}
+                />
+                <span>{t.name}</span>
+                <span
+                  className={`text-[10px] px-1 py-0.2 rounded font-mono ${
+                    isSelected ? 'bg-indigo-700 text-indigo-100' : 'bg-slate-100 dark:bg-slate-800 text-slate-500'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Active Filter Tags */}
+      {selectedTeamFilter !== 'ALL' && viewMode !== 'by_team' && (
         <div className="flex items-center gap-2 text-xs">
           <span className="text-slate-500">Đang lọc theo đội:</span>
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-sky-50 dark:bg-sky-950 text-sky-700 dark:text-sky-300 font-bold border border-sky-200 dark:border-sky-800">
@@ -393,188 +600,671 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
         </div>
       )}
 
-      {/* 5. Athletes Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xs overflow-hidden relative">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200/80 dark:border-slate-800 text-[11px] font-bold uppercase text-slate-400">
-                <th className="p-4 w-10 text-center">
-                  <input
-                    type="checkbox"
-                    checked={areAllFilteredAthletesSelected}
-                    onChange={handleToggleAllAthletes}
-                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                    title="Chọn / Bỏ chọn tất cả VĐV đang hiển thị"
-                  />
-                </th>
-                <th className="p-4">Số Áo</th>
-                <th className="p-4">Vận Động Viên</th>
-                <th className="p-4">Đội / Lớp Thi Đấu</th>
-                <th className="p-4">Vị Trí</th>
-                <th className="p-4">Bảo Mật E2EE (CCCD / ĐT)</th>
-                <th className="p-4">Trạng Thái</th>
-                <th className="p-4">Bàn Thắng/Điểm</th>
-                <th className="p-4 text-right">Thao Tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
-              {filteredAthletes.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="p-12 text-center text-slate-400 text-xs">
-                    <div className="max-w-md mx-auto space-y-2">
-                      <Users className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
-                      <p className="font-bold text-slate-700 dark:text-slate-200 text-xs">
-                        Chưa có vận động viên nào trong danh sách
-                      </p>
-                      <p className="text-slate-400 text-[11px]">
-                        Vui lòng nhấn nút <strong>"Đăng Ký VĐV Mới"</strong> phía trên để thêm vận động viên vào đội. Hoặc chuyển sang tab <strong>Danh Sách Đội</strong> để tạo các lớp/đội trước.
-                      </p>
-                      {onNavigateToTeams && (
-                        <div className="pt-2">
-                          <button
-                            type="button"
-                            onClick={onNavigateToTeams}
-                            className="text-xs font-bold text-sky-600 hover:underline cursor-pointer"
-                          >
-                            ← Đến trang Quản lý Danh Sách Đội (10A1, 10A2...)
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredAthletes.map((ath) => {
-                  const isSelected = selectedAthleteIds.includes(ath.id);
-                  const isRevealed = !!revealedIds[ath.id];
-                  const revealedData = revealedIds[ath.id];
+      {/* VIEW MODE 1: THEO ĐỘI THI ĐẤU (BY TEAM ACCORDION) */}
+      {viewMode === 'by_team' && (
+        <div className="space-y-4">
+          {Object.keys(athletesByTeam).length === 0 ? (
+            <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 p-12 text-center text-slate-400 text-xs">
+              <Users className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+              <p className="font-bold text-slate-700 dark:text-slate-200 text-xs">Không có đội nào phù hợp bộ lọc</p>
+              {onNavigateToTeams && (
+                <button
+                  type="button"
+                  onClick={onNavigateToTeams}
+                  className="mt-3 text-xs font-bold text-sky-600 hover:underline cursor-pointer"
+                >
+                  ← Đến trang Quản lý Danh Sách Đội (10A1, 10A2...)
+                </button>
+              )}
+            </div>
+          ) : (
+            Object.values(athletesByTeam).map(({ team, list }) => {
+              const isCollapsed = !!collapsedTeams[team.id];
+              const approvedCount = list.filter((a) => a.status === 'approved').length;
+              const pendingCount = list.filter((a) => a.status === 'pending').length;
+              const teamAthIds = list.map((a) => a.id);
+              const allTeamAthSelected = teamAthIds.length > 0 && teamAthIds.every((id) => selectedAthleteIds.includes(id));
 
-                  return (
-                    <tr
-                      key={ath.id}
-                      className={`transition ${
-                        isSelected
-                          ? 'bg-indigo-50/70 dark:bg-indigo-950/40'
-                          : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/40'
-                      }`}
-                    >
-                      <td className="p-4 w-10 text-center">
+              return (
+                <div
+                  key={team.id}
+                  className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xs overflow-hidden transition-all"
+                >
+                  {/* Team Card Header */}
+                  <div className="p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3 bg-slate-50/70 dark:bg-slate-950/60 border-b border-slate-100 dark:border-slate-800/80">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleTeamCollapse(team.id)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition cursor-pointer"
+                        title={isCollapsed ? 'Mở rộng đội' : 'Thu gọn đội'}
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                      </button>
+
+                      {list.length > 0 && (
                         <input
                           type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleToggleAthlete(ath.id)}
+                          checked={allTeamAthSelected}
+                          onChange={() => handleToggleTeamAthletesSelect(teamAthIds)}
                           className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
-                          title="Chọn VĐV này để thao tác hàng loạt"
+                          title="Chọn tất cả VĐV trong đội này"
                         />
-                      </td>
-                      <td className="p-4 font-mono font-black text-indigo-600 dark:text-indigo-400 text-sm">
-                        #{ath.jerseyNumber}
-                      </td>
-                      <td className="p-4">
-                        <div className="font-bold text-slate-900 dark:text-white">{ath.name}</div>
-                        <div className="text-[10px] text-slate-400">Sinh: {ath.dateOfBirth}</div>
-                      </td>
-                      <td className="p-4">
-                        <span className="font-bold text-slate-800 dark:text-slate-200">
-                          {ath.teamName}
-                        </span>
-                        <span className="block text-[10px] text-slate-400">{ath.group}</span>
-                      </td>
-                      <td className="p-4 text-slate-600 dark:text-slate-300">{ath.position}</td>
-                      <td className="p-4">
+                      )}
+
+                      <div
+                        className="w-3.5 h-3.5 rounded-full shrink-0 shadow-2xs"
+                        style={{ backgroundColor: team.color || '#6366f1' }}
+                      />
+
+                      <div>
                         <div className="flex items-center gap-2">
-                          <div>
-                            <div className="text-[11px] font-mono text-slate-700 dark:text-slate-300">
-                              {isRevealed
-                                ? revealedData.idCard
-                                : maskSensitive(ath.nationalIdEncrypted)}
-                            </div>
-                            <div className="text-[10px] font-mono text-slate-400">
-                              {isRevealed
-                                ? revealedData.phone
-                                : maskSensitive(ath.phoneEncrypted)}
-                            </div>
-                          </div>
-                          {isAdmin && (
-                            <button
-                              onClick={() => handleToggleReveal(ath)}
-                              className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-                              title={isRevealed ? 'Ẩn thông tin E2EE' : 'Giải mã định danh E2EE'}
-                            >
-                              {isDecrypting === ath.id ? (
-                                <span className="text-[10px] animate-pulse">...</span>
-                              ) : isRevealed ? (
-                                <EyeOff className="w-3.5 h-3.5 text-indigo-600" />
-                              ) : (
-                                <Eye className="w-3.5 h-3.5" />
-                              )}
-                            </button>
+                          <h3 className="font-extrabold text-base text-slate-900 dark:text-white tracking-tight">
+                            {team.name}
+                          </h3>
+                          <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                            · {team.group}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+                          <span><strong>{list.length}</strong> VĐV</span>
+                          <span>·</span>
+                          <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{approvedCount} đã duyệt</span>
+                          {pendingCount > 0 && (
+                            <>
+                              <span>·</span>
+                              <span className="text-amber-600 dark:text-amber-400 font-semibold">{pendingCount} chờ duyệt</span>
+                            </>
                           )}
                         </div>
-                      </td>
-                      <td className="p-4">
-                        {ath.status === 'approved' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-                            <CheckCircle2 className="w-3 h-3" />
-                            Đã duyệt
-                          </span>
-                        )}
-                        {ath.status === 'pending' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
-                            <Clock className="w-3 h-3" />
-                            Chờ duyệt
-                          </span>
-                        )}
-                        {ath.status === 'needs_revision' && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
-                            <AlertCircle className="w-3 h-3" />
-                            Cần bổ sung
-                          </span>
-                        )}
-                      </td>
-                      <td className="p-4 font-mono font-bold text-slate-700 dark:text-slate-300">
-                        {ath.goalsOrPoints}
-                      </td>
-                      <td className="p-4 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {isAdmin && ath.status !== 'approved' && (
-                            <button
-                              onClick={() => onApproveAthlete(ath.id, 'approved')}
-                              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold cursor-pointer"
-                              title="Duyệt VĐV"
-                            >
-                              Duyệt
-                            </button>
-                          )}
-                          {canRegister && (
-                            <button
-                              onClick={() => onOpenEditAthlete(ath)}
-                              className="p-1 text-slate-400 hover:text-indigo-600 rounded transition cursor-pointer"
-                              title="Sửa hồ sơ"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {isAdmin && (
-                            <button
-                              onClick={() => onDeleteAthlete(ath.id)}
-                              className="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
-                              title="Xóa VĐV"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
+                      </div>
+                    </div>
+
+                    {/* Team Header Actions */}
+                    <div className="flex items-center gap-2 ml-auto">
+                      {canRegister && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (onAddAthleteForTeam) {
+                              onAddAthleteForTeam(team);
+                            } else {
+                              onOpenAddAthlete();
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/80 dark:border-indigo-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Thêm VĐV</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Team Athletes Table (when not collapsed) */}
+                  {!isCollapsed && (
+                    <div className="overflow-x-auto">
+                      {list.length === 0 ? (
+                        <div className="p-8 text-center text-slate-400 text-xs">
+                          <Users className="w-6 h-6 text-slate-300 dark:text-slate-600 mx-auto mb-1.5" />
+                          <p className="font-semibold text-slate-600 dark:text-slate-300">
+                            Chưa có vận động viên nào trong đội {team.name}
+                          </p>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            Bấm nút <strong>"+ Thêm VĐV"</strong> phía trên để bổ sung thành viên cho đội này.
+                          </p>
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+                      ) : (
+                        <table className="w-full text-left text-xs border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50/50 dark:bg-slate-950/40 border-b border-slate-100 dark:border-slate-800 text-[11px] font-bold uppercase text-slate-400">
+                              <th className="p-3 w-10 text-center"></th>
+                              <th className="p-3 w-16">Số Áo</th>
+                              <th className="p-3">Vận Động Viên</th>
+                              <th className="p-3">Vị Trí</th>
+                              <th className="p-3">Bảo Mật E2EE (CCCD / ĐT)</th>
+                              <th className="p-3">Trạng Thái</th>
+                              <th className="p-3">Bàn Thắng/Điểm</th>
+                              <th className="p-3 text-right">Thao Tác</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                            {list.map((ath) => {
+                              const isSelected = selectedAthleteIds.includes(ath.id);
+                              const isRevealed = !!revealedIds[ath.id];
+                              const revealedData = revealedIds[ath.id];
+
+                              return (
+                                <tr
+                                  key={ath.id}
+                                  className={`transition ${
+                                    isSelected
+                                      ? 'bg-indigo-50/70 dark:bg-indigo-950/40'
+                                      : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/40'
+                                  }`}
+                                >
+                                  <td className="p-3 w-10 text-center">
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => handleToggleAthlete(ath.id)}
+                                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                      title="Chọn VĐV này"
+                                    />
+                                  </td>
+                                  <td className="p-3 font-mono font-black text-indigo-600 dark:text-indigo-400 text-sm">
+                                    #{ath.jerseyNumber}
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                      <span>{ath.name}</span>
+                                      {ath.isCaptain && (
+                                        <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                                          C
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="text-[10px] text-slate-400">Sinh: {ath.dateOfBirth}</div>
+                                  </td>
+                                  <td className="p-3 text-slate-600 dark:text-slate-300">{ath.position}</td>
+                                  <td className="p-3">
+                                    <div className="flex items-center gap-2">
+                                      <div>
+                                        <div className="text-[11px] font-mono text-slate-700 dark:text-slate-300">
+                                          {isRevealed
+                                            ? revealedData.idCard
+                                            : maskSensitive(ath.nationalIdEncrypted)}
+                                        </div>
+                                        <div className="text-[10px] font-mono text-slate-400">
+                                          {isRevealed
+                                            ? revealedData.phone
+                                            : maskSensitive(ath.phoneEncrypted)}
+                                        </div>
+                                      </div>
+                                      {isAdmin && (
+                                        <button
+                                          onClick={() => handleToggleReveal(ath)}
+                                          className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                                          title={isRevealed ? 'Ẩn thông tin E2EE' : 'Giải mã định danh E2EE'}
+                                        >
+                                          {isDecrypting === ath.id ? (
+                                            <span className="text-[10px] animate-pulse">...</span>
+                                          ) : isRevealed ? (
+                                            <EyeOff className="w-3.5 h-3.5 text-indigo-600" />
+                                          ) : (
+                                            <Eye className="w-3.5 h-3.5" />
+                                          )}
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td className="p-3">
+                                    {ath.status === 'approved' && (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        Đã duyệt
+                                      </span>
+                                    )}
+                                    {ath.status === 'pending' && (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                        <Clock className="w-3 h-3" />
+                                        Chờ duyệt
+                                      </span>
+                                    )}
+                                    {ath.status === 'needs_revision' && (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                                        <AlertCircle className="w-3 h-3" />
+                                        Cần bổ sung
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="p-3 font-mono font-bold text-slate-700 dark:text-slate-300">
+                                    {ath.goalsOrPoints}
+                                  </td>
+                                  <td className="p-3 text-right">
+                                    <div className="flex items-center justify-end gap-1">
+                                      {isAdmin && ath.status !== 'approved' && (
+                                        <button
+                                          onClick={() => onApproveAthlete(ath.id, 'approved')}
+                                          className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold cursor-pointer"
+                                          title="Duyệt VĐV"
+                                        >
+                                          Duyệt
+                                        </button>
+                                      )}
+                                      {canRegister && (
+                                        <button
+                                          onClick={() => onOpenEditAthlete(ath)}
+                                          className="p-1 text-slate-400 hover:text-indigo-600 rounded transition cursor-pointer"
+                                          title="Sửa hồ sơ"
+                                        >
+                                          <Edit2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                      {isAdmin && (
+                                        <button
+                                          onClick={() => onDeleteAthlete(ath.id)}
+                                          className="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
+                                          title="Xóa VĐV"
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5" />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
         </div>
-      </div>
+      )}
+
+      {/* VIEW MODE 2: THEO BẢNG / KHỐI (BY GROUP ACCORDION) */}
+      {viewMode === 'by_group' && (
+        <div className="space-y-4">
+          {Object.entries(athletesByGroup).map(([groupName, groupAthletes]) => {
+            const isCollapsed = !!collapsedGroups[groupName];
+            const groupTeams = teams.filter((t) => t.group === groupName);
+            const approvedCount = groupAthletes.filter((a) => a.status === 'approved').length;
+
+            return (
+              <div
+                key={groupName}
+                className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xs overflow-hidden transition-all"
+              >
+                {/* Group Header */}
+                <div
+                  onClick={() => handleToggleGroupCollapse(groupName)}
+                  className="p-4 sm:p-5 flex items-center justify-between gap-3 bg-slate-50/70 dark:bg-slate-950/60 border-b border-slate-100 dark:border-slate-800/80 cursor-pointer hover:bg-slate-100/60 dark:hover:bg-slate-900 transition"
+                >
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition"
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight className="w-4 h-4" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4" />
+                      )}
+                    </button>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-extrabold text-base text-slate-900 dark:text-white tracking-tight">
+                          {groupName}
+                        </h3>
+                        <span className="text-[11px] font-semibold text-slate-400">
+                          ({groupTeams.length} đội)
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5">
+                        <span><strong>{groupAthletes.length}</strong> VĐV</span>
+                        <span>·</span>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold">{approvedCount} đã duyệt</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Group Table */}
+                {!isCollapsed && (
+                  <div className="overflow-x-auto">
+                    {groupAthletes.length === 0 ? (
+                      <div className="p-8 text-center text-slate-400 text-xs">
+                        <Users className="w-6 h-6 text-slate-300 dark:text-slate-600 mx-auto mb-1.5" />
+                        <p className="font-semibold text-slate-600 dark:text-slate-300">
+                          Chưa có vận động viên nào trong {groupName}
+                        </p>
+                      </div>
+                    ) : (
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="bg-slate-50/50 dark:bg-slate-950/40 border-b border-slate-100 dark:border-slate-800 text-[11px] font-bold uppercase text-slate-400">
+                            <th className="p-3 w-10 text-center"></th>
+                            <th className="p-3 w-16">Số Áo</th>
+                            <th className="p-3">Vận Động Viên</th>
+                            <th className="p-3">Đội Thi Đấu</th>
+                            <th className="p-3">Vị Trí</th>
+                            <th className="p-3">Bảo Mật E2EE</th>
+                            <th className="p-3">Trạng Thái</th>
+                            <th className="p-3">Bàn Thắng/Điểm</th>
+                            <th className="p-3 text-right">Thao Tác</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                          {groupAthletes.map((ath) => {
+                            const isSelected = selectedAthleteIds.includes(ath.id);
+                            const isRevealed = !!revealedIds[ath.id];
+                            const revealedData = revealedIds[ath.id];
+
+                            return (
+                              <tr
+                                key={ath.id}
+                                className={`transition ${
+                                  isSelected
+                                    ? 'bg-indigo-50/70 dark:bg-indigo-950/40'
+                                    : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/40'
+                                }`}
+                              >
+                                <td className="p-3 w-10 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => handleToggleAthlete(ath.id)}
+                                    className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                                  />
+                                </td>
+                                <td className="p-3 font-mono font-black text-indigo-600 dark:text-indigo-400 text-sm">
+                                  #{ath.jerseyNumber}
+                                </td>
+                                <td className="p-3">
+                                  <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                                    <span>{ath.name}</span>
+                                    {ath.isCaptain && (
+                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                                        C
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400">Sinh: {ath.dateOfBirth}</div>
+                                </td>
+                                <td className="p-3">
+                                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                                    {ath.teamName}
+                                  </span>
+                                </td>
+                                <td className="p-3 text-slate-600 dark:text-slate-300">{ath.position}</td>
+                                <td className="p-3">
+                                  <div className="flex items-center gap-2">
+                                    <div>
+                                      <div className="text-[11px] font-mono text-slate-700 dark:text-slate-300">
+                                        {isRevealed
+                                          ? revealedData.idCard
+                                          : maskSensitive(ath.nationalIdEncrypted)}
+                                      </div>
+                                    </div>
+                                    {isAdmin && (
+                                      <button
+                                        onClick={() => handleToggleReveal(ath)}
+                                        className="p-1 rounded text-slate-400 hover:text-indigo-600 transition cursor-pointer"
+                                      >
+                                        {isRevealed ? (
+                                          <EyeOff className="w-3.5 h-3.5 text-indigo-600" />
+                                        ) : (
+                                          <Eye className="w-3.5 h-3.5" />
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="p-3">
+                                  {ath.status === 'approved' && (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                      <CheckCircle2 className="w-3 h-3" />
+                                      Đã duyệt
+                                    </span>
+                                  )}
+                                  {ath.status === 'pending' && (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                      <Clock className="w-3 h-3" />
+                                      Chờ duyệt
+                                    </span>
+                                  )}
+                                  {ath.status === 'needs_revision' && (
+                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                                      <AlertCircle className="w-3 h-3" />
+                                      Cần bổ sung
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="p-3 font-mono font-bold text-slate-700 dark:text-slate-300">
+                                  {ath.goalsOrPoints}
+                                </td>
+                                <td className="p-3 text-right">
+                                  <div className="flex items-center justify-end gap-1">
+                                    {isAdmin && ath.status !== 'approved' && (
+                                      <button
+                                        onClick={() => onApproveAthlete(ath.id, 'approved')}
+                                        className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold cursor-pointer"
+                                      >
+                                        Duyệt
+                                      </button>
+                                    )}
+                                    {canRegister && (
+                                      <button
+                                        onClick={() => onOpenEditAthlete(ath)}
+                                        className="p-1 text-slate-400 hover:text-indigo-600 rounded transition cursor-pointer"
+                                      >
+                                        <Edit2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                    {isAdmin && (
+                                      <button
+                                        onClick={() => onDeleteAthlete(ath.id)}
+                                        className="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* VIEW MODE 3: DANH SÁCH TỔNG (COMPREHENSIVE FLAT TABLE) */}
+      {viewMode === 'table' && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xs overflow-hidden relative">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50 dark:bg-slate-950 border-b border-slate-200/80 dark:border-slate-800 text-[11px] font-bold uppercase text-slate-400">
+                  <th className="p-4 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={areAllFilteredAthletesSelected}
+                      onChange={handleToggleAllAthletes}
+                      className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      title="Chọn / Bỏ chọn tất cả VĐV đang hiển thị"
+                    />
+                  </th>
+                  <th className="p-4">Số Áo</th>
+                  <th className="p-4">Vận Động Viên</th>
+                  <th className="p-4">Đội / Lớp Thi Đấu</th>
+                  <th className="p-4">Vị Trí</th>
+                  <th className="p-4">Bảo Mật E2EE (CCCD / ĐT)</th>
+                  <th className="p-4">Trạng Thái</th>
+                  <th className="p-4">Bàn Thắng/Điểm</th>
+                  <th className="p-4 text-right">Thao Tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                {filteredAthletes.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="p-12 text-center text-slate-400 text-xs">
+                      <div className="max-w-md mx-auto space-y-2">
+                        <Users className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto" />
+                        <p className="font-bold text-slate-700 dark:text-slate-200 text-xs">
+                          Chưa có vận động viên nào trong danh sách
+                        </p>
+                        <p className="text-slate-400 text-[11px]">
+                          Vui lòng nhấn nút <strong>"Đăng Ký VĐV Mới"</strong> phía trên để thêm vận động viên vào đội. Hoặc chuyển sang tab <strong>Danh Sách Đội</strong> để tạo các lớp/đội trước.
+                        </p>
+                        {onNavigateToTeams && (
+                          <div className="pt-2">
+                            <button
+                              type="button"
+                              onClick={onNavigateToTeams}
+                              className="text-xs font-bold text-sky-600 hover:underline cursor-pointer"
+                            >
+                              ← Đến trang Quản lý Danh Sách Đội (10A1, 10A2...)
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredAthletes.map((ath) => {
+                    const isSelected = selectedAthleteIds.includes(ath.id);
+                    const isRevealed = !!revealedIds[ath.id];
+                    const revealedData = revealedIds[ath.id];
+
+                    return (
+                      <tr
+                        key={ath.id}
+                        className={`transition ${
+                          isSelected
+                            ? 'bg-indigo-50/70 dark:bg-indigo-950/40'
+                            : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/40'
+                        }`}
+                      >
+                        <td className="p-4 w-10 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleAthlete(ath.id)}
+                            className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                            title="Chọn VĐV này để thao tác hàng loạt"
+                          />
+                        </td>
+                        <td className="p-4 font-mono font-black text-indigo-600 dark:text-indigo-400 text-sm">
+                          #{ath.jerseyNumber}
+                        </td>
+                        <td className="p-4">
+                          <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <span>{ath.name}</span>
+                            {ath.isCaptain && (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                                C
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-slate-400">Sinh: {ath.dateOfBirth}</div>
+                        </td>
+                        <td className="p-4">
+                          <span className="font-bold text-slate-800 dark:text-slate-200">
+                            {ath.teamName}
+                          </span>
+                          <span className="block text-[10px] text-slate-400">{ath.group}</span>
+                        </td>
+                        <td className="p-4 text-slate-600 dark:text-slate-300">{ath.position}</td>
+                        <td className="p-4">
+                          <div className="flex items-center gap-2">
+                            <div>
+                              <div className="text-[11px] font-mono text-slate-700 dark:text-slate-300">
+                                {isRevealed
+                                  ? revealedData.idCard
+                                  : maskSensitive(ath.nationalIdEncrypted)}
+                              </div>
+                              <div className="text-[10px] font-mono text-slate-400">
+                                {isRevealed
+                                  ? revealedData.phone
+                                  : maskSensitive(ath.phoneEncrypted)}
+                              </div>
+                            </div>
+                            {isAdmin && (
+                              <button
+                                onClick={() => handleToggleReveal(ath)}
+                                className="p-1 rounded text-slate-400 hover:text-indigo-600 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                                title={isRevealed ? 'Ẩn thông tin E2EE' : 'Giải mã định danh E2EE'}
+                              >
+                                {isDecrypting === ath.id ? (
+                                  <span className="text-[10px] animate-pulse">...</span>
+                                ) : isRevealed ? (
+                                  <EyeOff className="w-3.5 h-3.5 text-indigo-600" />
+                                ) : (
+                                  <Eye className="w-3.5 h-3.5" />
+                                )}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          {ath.status === 'approved' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Đã duyệt
+                            </span>
+                          )}
+                          {ath.status === 'pending' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                              <Clock className="w-3 h-3" />
+                              Chờ duyệt
+                            </span>
+                          )}
+                          {ath.status === 'needs_revision' && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                              <AlertCircle className="w-3 h-3" />
+                              Cần bổ sung
+                            </span>
+                          )}
+                        </td>
+                        <td className="p-4 font-mono font-bold text-slate-700 dark:text-slate-300">
+                          {ath.goalsOrPoints}
+                        </td>
+                        <td className="p-4 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {isAdmin && ath.status !== 'approved' && (
+                              <button
+                                onClick={() => onApproveAthlete(ath.id, 'approved')}
+                                className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[11px] font-bold cursor-pointer"
+                                title="Duyệt VĐV"
+                              >
+                                Duyệt
+                              </button>
+                            )}
+                            {canRegister && (
+                              <button
+                                onClick={() => onOpenEditAthlete(ath)}
+                                className="p-1 text-slate-400 hover:text-indigo-600 rounded transition cursor-pointer"
+                                title="Sửa hồ sơ"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {isAdmin && (
+                              <button
+                                onClick={() => onDeleteAthlete(ath.id)}
+                                className="p-1 text-slate-400 hover:text-rose-600 rounded transition cursor-pointer"
+                                title="Xóa VĐV"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* 6. Floating Bulk Actions Bar */}
       {selectedAthleteIds.length > 0 && (
