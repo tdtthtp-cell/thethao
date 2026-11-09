@@ -1,4 +1,4 @@
-import React, { useState, useId, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   X,
   Upload,
@@ -14,6 +14,7 @@ import {
   Layers,
   Sparkles,
   Check,
+  Loader2,
 } from 'lucide-react';
 import { Athlete, Team } from '../types';
 import {
@@ -38,9 +39,10 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
   initialTeamFilter,
   onConfirmImport,
 }) => {
-  const fileInputId = useId();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
   const [previewAthletes, setPreviewAthletes] = useState<ParsedAthleteItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchFilter, setSearchFilter] = useState('');
@@ -48,6 +50,17 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
 
   // Selected default team when importing (can be set by user or derived from active team filter)
   const [targetTeamId, setTargetTeamId] = useState<string>('');
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    if (isOpen) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   useEffect(() => {
     if (isOpen) {
@@ -64,6 +77,7 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
       setSelectedIds(new Set());
       setSearchFilter('');
       setTeamFilter('ALL');
+      setIsDragOver(false);
     }
   }, [isOpen, initialTeamFilter, teams]);
 
@@ -75,6 +89,31 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
     const selected = e.target.files?.[0];
     if (!selected) return;
     await processFile(selected);
+    if (e.target) {
+      e.target.value = ''; // Reset so user can pick same file again if desired
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragOver(false);
+    const dropped = e.dataTransfer.files?.[0];
+    if (dropped) {
+      await processFile(dropped);
+    }
   };
 
   const processFile = async (f: File) => {
@@ -224,8 +263,26 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-md p-4 animate-in fade-in">
-      <div className="w-full max-w-4xl max-h-[92vh] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-md p-3 sm:p-4 animate-in fade-in overflow-y-auto"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        className="w-full max-w-4xl max-h-[92vh] bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col overflow-hidden relative"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Loading Overlay */}
+        {isLoading && (
+          <div className="absolute inset-0 z-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xs flex flex-col items-center justify-center gap-3">
+            <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+              Đang phân tích & xử lý file Excel vận động viên...
+            </p>
+          </div>
+        )}
+
         {/* Header */}
         <div className="p-5 sm:p-6 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-3">
@@ -253,6 +310,15 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
           </button>
         </div>
 
+        {/* Hidden file input controlled via ref */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+
         {/* Body */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1">
           {/* Download Template Banner */}
@@ -278,25 +344,38 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
 
           {/* Upload Dropzone */}
           {!file && (
-            <label
-              htmlFor={fileInputId}
-              className="border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 rounded-3xl p-8 flex flex-col items-center justify-center text-center cursor-pointer transition bg-slate-50/50 dark:bg-slate-900/50 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20 group"
+            <div
+              onClick={() => fileInputRef.current?.click()}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`border-2 border-dashed rounded-3xl p-8 sm:p-10 flex flex-col items-center justify-center text-center cursor-pointer transition select-none ${
+                isDragOver
+                  ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40 scale-[1.01]'
+                  : 'border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 bg-slate-50/50 dark:bg-slate-900/50 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20'
+              }`}
             >
-              <div className="w-14 h-14 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-3 group-hover:scale-110 transition shadow-xs">
+              <div className="w-14 h-14 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-3 shadow-xs">
                 <Upload className="w-7 h-7" />
               </div>
-              <p className="font-bold text-sm text-slate-800 dark:text-slate-200 mb-1">
-                Kéo thả file Excel danh sách VĐV vào đây hoặc <span className="text-indigo-600 dark:text-indigo-400 underline">bấm để chọn file</span>
+              <p className="font-extrabold text-sm sm:text-base text-slate-800 dark:text-slate-200 mb-1">
+                {isDragOver ? 'Thả file Excel vào đây ngay' : 'Kéo thả file Excel danh sách VĐV vào đây'}
               </p>
-              <p className="text-xs text-slate-400">Hỗ trợ các định dạng .xlsx, .xls, .csv</p>
-              <input
-                id={fileInputId}
-                type="file"
-                accept=".xlsx, .xls, .csv"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-            </label>
+              <p className="text-xs text-slate-400 mb-4">
+                Hỗ trợ định dạng <strong>.xlsx, .xls, .csv</strong> (Hệ thống tự động nhận diện đội/lớp)
+              </p>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  fileInputRef.current?.click();
+                }}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Bấm Chọn File Từ Máy Tính</span>
+              </button>
+            </div>
           )}
 
           {/* Preview Section */}
@@ -311,19 +390,13 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
                     ({previewAthletes.length} vận động viên tìm thấy)
                   </span>
                 </div>
-                <label
-                  htmlFor={fileInputId}
-                  className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer"
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
                 >
                   Chọn file khác
-                  <input
-                    id={fileInputId}
-                    type="file"
-                    accept=".xlsx, .xls, .csv"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                </label>
+                </button>
               </div>
 
               {/* Team Auto-Detection & Quick Assignment Bar */}

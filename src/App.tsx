@@ -48,6 +48,7 @@ import { OfflineIndicator } from './components/OfflineIndicator';
 import { AuthModal } from './components/AuthModal';
 import { NotificationDrawer } from './components/NotificationDrawer';
 import { AthleteModal } from './components/AthleteModal';
+import { AthleteExcelImportModal } from './components/AthleteExcelImportModal';
 import { SportModal } from './components/SportModal';
 import { MatchEditModal } from './components/MatchEditModal';
 import { MatchMinutesModal } from './components/MatchMinutesModal';
@@ -92,6 +93,13 @@ export default function App() {
   const [isMinutesModalOpen, setIsMinutesModalOpen] = useState(false);
   const [selectedMinutesMatch, setSelectedMinutesMatch] = useState<Match | null>(null);
   const [isReportsModalOpen, setIsReportsModalOpen] = useState(false);
+  const [isAthleteExcelImportOpen, setIsAthleteExcelImportOpen] = useState(false);
+  const [athleteExcelImportTeam, setAthleteExcelImportTeam] = useState<string | undefined>(undefined);
+
+  const handleOpenAthleteExcelImport = (teamIdOrName?: string) => {
+    setAthleteExcelImportTeam(teamIdOrName);
+    setIsAthleteExcelImportOpen(true);
+  };
 
   // 1. Initial State Load
   useEffect(() => {
@@ -862,6 +870,7 @@ export default function App() {
               }
               setActiveTab('athletes');
             }}
+            onOpenAthleteExcelImport={handleOpenAthleteExcelImport}
             onAddAthleteForTeam={(team) => {
               setEditingAthlete({
                 id: '',
@@ -895,6 +904,7 @@ export default function App() {
             initialTeamFilter={athleteTeamFilter}
             onNavigateToTeams={() => setActiveTab('teams')}
             onOpenLogin={() => setIsAuthOpen(true)}
+            onOpenAthleteExcelImport={handleOpenAthleteExcelImport}
             onOpenAddAthlete={() => {
               setEditingAthlete(null);
               setIsAthleteModalOpen(true);
@@ -1067,6 +1077,7 @@ export default function App() {
         isOpen={isAthleteModalOpen}
         onClose={() => setIsAthleteModalOpen(false)}
         onSave={handleSaveAthlete}
+        onOpenAthleteExcelImport={handleOpenAthleteExcelImport}
       />
 
       {/* 4. Sport Discipline Modal */}
@@ -1128,6 +1139,15 @@ export default function App() {
             syncAllMatchesToFirestore(res.matches);
           }
         }}
+      />
+
+      {/* 8. Athlete Excel Import Modal (Root-level to ensure accessibility from any tab or modal) */}
+      <AthleteExcelImportModal
+        isOpen={isAthleteExcelImportOpen}
+        onClose={() => setIsAthleteExcelImportOpen(false)}
+        teams={teams}
+        initialTeamFilter={athleteExcelImportTeam}
+        onConfirmImport={handleImportMultipleAthletes}
       />
     </div>
   );

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Lock, ShieldCheck, UserPlus } from 'lucide-react';
+import { X, Lock, ShieldCheck, UserPlus, FileSpreadsheet } from 'lucide-react';
 import { Athlete, Team, UserProfile } from '../types';
 import { encryptText } from '../services/crypto';
 
@@ -10,6 +10,7 @@ interface AthleteModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (athlete: Athlete) => void;
+  onOpenAthleteExcelImport?: (teamId?: string) => void;
 }
 
 export const AthleteModal: React.FC<AthleteModalProps> = ({
@@ -19,6 +20,7 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
   isOpen,
   onClose,
   onSave,
+  onOpenAthleteExcelImport,
 }) => {
   const [name, setName] = useState(athlete?.name || '');
   const [teamId, setTeamId] = useState(athlete?.teamId || (teams[0]?.id || ''));
@@ -115,6 +117,26 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
             <strong>Mã hóa đầu cuối chủ động:</strong> Số CCCD và Số điện thoại được mã hóa trực tiếp trên thiết bị bằng AES-256 trước khi lưu trữ.
           </div>
         </div>
+
+        {/* Excel Import Fast Switch */}
+        {onOpenAthleteExcelImport && (
+          <div className="p-3 bg-emerald-50/80 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200 dark:border-emerald-800 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+            <div className="flex items-center gap-2 text-emerald-900 dark:text-emerald-200">
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>Có danh sách cả đội trong file Excel?</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenAthleteExcelImport(teamId);
+              }}
+              className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs cursor-pointer shadow-2xs transition flex items-center gap-1"
+            >
+              <span>Nhập Từ File Excel →</span>
+            </button>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

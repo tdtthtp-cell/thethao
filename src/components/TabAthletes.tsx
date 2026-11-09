@@ -51,6 +51,7 @@ interface TabAthletesProps {
   onApproveMultipleAthletes?: (athleteIds: string[], status: Athlete['status']) => void;
   onImportMultipleAthletes?: (athletes: Athlete[]) => void;
   onAddAthleteForTeam?: (team: Team) => void;
+  onOpenAthleteExcelImport?: (teamIdOrName?: string) => void;
 }
 
 export const TabAthletes: React.FC<TabAthletesProps> = ({
@@ -69,6 +70,7 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
   onApproveMultipleAthletes,
   onImportMultipleAthletes,
   onAddAthleteForTeam,
+  onOpenAthleteExcelImport,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedGroup, setSelectedGroup] = useState<string>('ALL');
@@ -77,6 +79,18 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
 
   // Excel Athlete Import Modal state
   const [isAthleteImportModalOpen, setIsAthleteImportModalOpen] = useState(false);
+
+  const handleOpenExcelImport = (targetTeamId?: string) => {
+    const effTeam = targetTeamId || (selectedTeamFilter !== 'ALL' ? selectedTeamFilter : undefined);
+    if (targetTeamId) {
+      setSelectedTeamFilter(targetTeamId);
+    }
+    if (onOpenAthleteExcelImport) {
+      onOpenAthleteExcelImport(effTeam);
+    } else {
+      setIsAthleteImportModalOpen(true);
+    }
+  };
 
   // Update filter when initialTeamFilter changes
   useEffect(() => {
@@ -306,51 +320,47 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
             </button>
           )}
 
-          {canRegister && (
-            <>
-              {/* Import Athletes from Excel */}
-              <button
-                type="button"
-                onClick={() => setIsAthleteImportModalOpen(true)}
-                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                title="Nhập danh sách VĐV của đội từ file Excel (.xlsx, .xls, .csv)"
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                <span>Nhập VĐV Excel</span>
-              </button>
+          {/* Always accessible: Import Athletes from Excel */}
+          <button
+            type="button"
+            onClick={() => handleOpenExcelImport()}
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+            title="Nhập danh sách VĐV của đội từ file Excel (.xlsx, .xls, .csv)"
+          >
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Nhập VĐV Excel</span>
+          </button>
 
-              {/* Download Athlete Template */}
-              <button
-                type="button"
-                onClick={() => {
-                  const targetTeam = teams.find((t) => t.id === selectedTeamFilter);
-                  downloadAthleteImportTemplateExcel(targetTeam?.name || (teams[0]?.name || '10A1'));
-                }}
-                className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700"
-                title="Tải cấu trúc file mẫu danh sách vận động viên trong 1 đội (.xlsx)"
-              >
-                <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                <span>Mẫu VĐV Đội (.xlsx)</span>
-              </button>
+          {/* Download Athlete Template */}
+          <button
+            type="button"
+            onClick={() => {
+              const targetTeam = teams.find((t) => t.id === selectedTeamFilter);
+              downloadAthleteImportTemplateExcel(targetTeam?.name || (teams[0]?.name || '10A1'));
+            }}
+            className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700"
+            title="Tải cấu trúc file mẫu danh sách vận động viên trong 1 đội (.xlsx)"
+          >
+            <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>Mẫu VĐV Đội (.xlsx)</span>
+          </button>
 
-              <button
-                onClick={onOpenAddAthlete}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
-              >
-                <UserPlus className="w-4 h-4" />
-                <span>Đăng Ký VĐV</span>
-              </button>
-            </>
-          )}
-
-          {!canRegister && (
+          {canRegister ? (
+            <button
+              onClick={onOpenAddAthlete}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+            >
+              <UserPlus className="w-4 h-4" />
+              <span>Đăng Ký VĐV</span>
+            </button>
+          ) : (
             <button
               type="button"
               onClick={onOpenLogin}
-              className="px-4 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+              className="px-3.5 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
             >
               <LogIn className="w-3.5 h-3.5" />
-              <span>Đăng Nhập Để Thêm VĐV</span>
+              <span>Đăng Nhập</span>
             </button>
           )}
         </div>
@@ -686,37 +696,34 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
 
                     {/* Team Header Actions */}
                     <div className="flex items-center gap-2 ml-auto">
-                      {canRegister && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedTeamFilter(team.id);
-                              setIsAthleteImportModalOpen(true);
-                            }}
-                            className="px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200/80 dark:border-emerald-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                            title={`Nhập danh sách VĐV cho ${team.name} từ file Excel`}
-                          >
-                            <FileSpreadsheet className="w-3.5 h-3.5" />
-                            <span className="hidden sm:inline">Nhập Excel</span>
-                          </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenExcelImport(team.id)}
+                        className="px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200/80 dark:border-emerald-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                        title={`Nhập danh sách VĐV cho ${team.name} từ file Excel`}
+                      >
+                        <FileSpreadsheet className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Nhập Excel</span>
+                      </button>
 
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (onAddAthleteForTeam) {
-                                onAddAthleteForTeam(team);
-                              } else {
-                                onOpenAddAthlete();
-                              }
-                            }}
-                            className="px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/80 dark:border-indigo-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            <span>Thêm VĐV</span>
-                          </button>
-                        </>
-                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (canRegister) {
+                            if (onAddAthleteForTeam) {
+                              onAddAthleteForTeam(team);
+                            } else {
+                              onOpenAddAthlete();
+                            }
+                          } else if (onOpenLogin) {
+                            onOpenLogin();
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/80 dark:border-indigo-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Thêm VĐV</span>
+                      </button>
                     </div>
                   </div>
 
@@ -1125,19 +1132,27 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
                           Chưa có vận động viên nào trong danh sách
                         </p>
                         <p className="text-slate-400 text-[11px]">
-                          Vui lòng nhấn nút <strong>"Đăng Ký VĐV Mới"</strong> phía trên để thêm vận động viên vào đội. Hoặc chuyển sang tab <strong>Danh Sách Đội</strong> để tạo các lớp/đội trước.
+                          Vui lòng nhấn nút <strong>"Nhập VĐV Excel"</strong> hoặc <strong>"Đăng Ký VĐV"</strong> phía trên để thêm vận động viên vào đội. Hoặc chuyển sang tab <strong>Danh Sách Đội</strong> để tạo các lớp/đội trước.
                         </p>
-                        {onNavigateToTeams && (
-                          <div className="pt-2">
+                        <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenExcelImport()}
+                            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5" />
+                            <span>Nhập VĐV Từ File Excel</span>
+                          </button>
+                          {onNavigateToTeams && (
                             <button
                               type="button"
                               onClick={onNavigateToTeams}
-                              className="text-xs font-bold text-sky-600 hover:underline cursor-pointer"
+                              className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition cursor-pointer"
                             >
-                              ← Đến trang Quản lý Danh Sách Đội (10A1, 10A2...)
+                              ← Quản lý Danh Sách Đội (10A1...)
                             </button>
-                          </div>
-                        )}
+                          )}
+                        </div>
                       </div>
                     </td>
                   </tr>
