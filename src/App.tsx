@@ -20,6 +20,7 @@ import {
   loadTournamentState,
   saveTournamentState,
 } from './services/initialData';
+import { getVenueForGroup, sortGroupsByVenue } from './services/venueService';
 import { initAuth } from './services/firebaseAuth';
 import {
   subscribeToFirestore,
@@ -78,7 +79,36 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [athleteTeamFilter, setAthleteTeamFilter] = useState<string>('ALL');
   const [isDark, setIsDark] = useState<boolean>(false);
-  const [currentUser, setCurrentUser] = useState<UserProfile>(DEFAULT_GUEST_USER);
+  const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
+    try {
+      const saved = typeof window !== 'undefined' ? localStorage.getItem('sport_tournament_active_user') : null;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.role) return parsed;
+      }
+    } catch {
+      // fallback
+    }
+    return DEFAULT_GUEST_USER;
+  });
+
+  const handleLogin = (profile: UserProfile) => {
+    setCurrentUser(profile);
+    try {
+      localStorage.setItem('sport_tournament_active_user', JSON.stringify(profile));
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleLogout = () => {
+    try {
+      localStorage.removeItem('sport_tournament_active_user');
+    } catch {
+      // ignore
+    }
+    setCurrentUser(DEFAULT_GUEST_USER);
+  };
   const [syncStatus, setSyncStatus] = useState<'synced' | 'connecting' | 'error'>('connecting');
 
   // Modals state
@@ -123,7 +153,7 @@ export default function App() {
   useEffect(() => {
     const unsub = initAuth((user) => {
       if (user && user.email) {
-        setCurrentUser({
+        handleLogin({
           role: 'admin',
           username: user.email,
           displayName: user.displayName || user.email.split('@')[0],
@@ -425,9 +455,14 @@ export default function App() {
       const baseDate = startDate || new Date().toISOString().slice(0, 10);
       let minuteOffset = startHour * 60;
 
-      config.customGroups.forEach((grp) => {
+      // Sort groups by venue first: Điểm chính (K10, K11, K12) first, then Phân hiệu
+      const sortedGroups = sortGroupsByVenue(config.customGroups);
+
+      sortedGroups.forEach((grp) => {
         const grpTeams = effectiveTeams.filter((t) => t.group === grp);
         if (grpTeams.length < 2) return;
+        const venue = getVenueForGroup(grp);
+        const venueLabel = venue === 'branch' ? 'Phân hiệu' : 'Điểm chính';
 
         // Round robin pairing
         for (let i = 0; i < grpTeams.length; i++) {
@@ -440,7 +475,7 @@ export default function App() {
               id: 'M_' + Date.now() + '_' + matchCount,
               code: `Trận ${matchCount.toString().padStart(2, '0')}`,
               stage: grp,
-              pitch: matchCount % 2 === 1 ? 'Sân 1 (Chính)' : 'Sân 2',
+              pitch: matchCount % 2 === 1 ? `Sân 1 (${venueLabel})` : `Sân 2 (${venueLabel})`,
               date: baseDate,
               time: timeStr,
               home: grpTeams[i],
@@ -458,7 +493,7 @@ export default function App() {
               events: [],
               refereeName: config.referee,
               secretaryName: config.secretary,
-              notes: `Vòng bảng ${grp}`,
+              notes: `Vòng bảng ${grp} (${venueLabel})`,
             });
 
             matchCount++;
@@ -829,6 +864,7 @@ export default function App() {
           handleUpdateConfig((prev) => ({ ...prev, themeColor: col }));
         }}
         syncStatus={syncStatus}
+        onLogout={handleLogout}
       />
 
       {/* Main Content Viewport */}
@@ -1049,8 +1085,8 @@ export default function App() {
         <AuthModal
           currentUser={currentUser}
           users={users}
-          onLogin={setCurrentUser}
-          onLogout={() => setCurrentUser(DEFAULT_GUEST_USER)}
+          onLogin={handleLogin}
+          onLogout={handleLogout}
           onClose={() => setIsAuthOpen(false)}
           onSaveUser={handleSaveUser}
           onDeleteUser={handleDeleteUser}

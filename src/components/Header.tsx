@@ -14,6 +14,9 @@ import {
   BarChart3,
   FileText,
   Settings,
+  Flame,
+  LogIn,
+  LogOut,
 } from 'lucide-react';
 import { TournamentConfig, UserProfile } from '../types';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -34,6 +37,7 @@ interface HeaderProps {
   onThemeColorChange: (color: TournamentConfig['themeColor']) => void;
   syncStatus?: 'synced' | 'connecting' | 'error';
   onOpenReports?: () => void;
+  onLogout?: () => void;
 }
 
 const GoogleIcon = () => (
@@ -84,6 +88,7 @@ export const Header: React.FC<HeaderProps> = ({
   onThemeColorChange,
   syncStatus = 'synced',
   onOpenReports,
+  onLogout,
 }) => {
   const [showThemePicker, setShowThemePicker] = React.useState(false);
 
@@ -100,24 +105,6 @@ export const Header: React.FC<HeaderProps> = ({
     user.assignedCategories && user.assignedCategories.length > 0
       ? user.assignedCategories.join(', ')
       : 'Tất cả nội dung';
-
-  const getRoleLabel = () => {
-    if (user.authProvider === 'google') {
-      return user.displayName || user.email || 'Tài khoản Google';
-    }
-    switch (user.role) {
-      case 'admin':
-        return user.displayName === 'admin' ? 'Admin: admin' : `Admin: ${user.displayName}`;
-      case 'referee':
-        return `Trọng tài: ${user.displayName}`;
-      case 'secretary':
-        return `Thư ký: ${user.displayName}`;
-      case 'athlete':
-        return user.displayName || 'VĐV / Đội';
-      default:
-        return 'Đăng Nhập';
-    }
-  };
 
   const navLinks = [
     { id: 'overview', label: 'Tổng Quan', icon: LayoutDashboard },
@@ -136,6 +123,8 @@ export const Header: React.FC<HeaderProps> = ({
     { id: 'rose', label: 'Hồng Đỏ (Rose)', bg: 'bg-rose-500' },
     { id: 'violet', label: 'Tím Đậm (Violet)', bg: 'bg-violet-500' },
   ];
+
+  const isLoggedIn = user.role !== 'viewer';
 
   return (
     <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 transition-colors shadow-xs no-print">
@@ -162,142 +151,158 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Actions & Google / Auth Switcher */}
+          {/* Actions: Grouped Inward Utility Cluster + Explicit Login/Logout Buttons */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-            {/* Cloud Sync Status Badge */}
-            <div
-              className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-semibold transition ${
-                syncStatus === 'synced'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                  : syncStatus === 'connecting'
-                  ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700'
-              }`}
-              title={
-                syncStatus === 'synced'
-                  ? 'Cơ sở dữ liệu Firestore đang đồng bộ thời gian thực trên tất cả thiết bị'
-                  : syncStatus === 'connecting'
-                  ? 'Đang kết nối Firestore cloud...'
-                  : 'Chế độ lưu trữ thiết bị cục bộ'
-              }
-            >
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  syncStatus === 'synced'
-                    ? 'bg-emerald-500 animate-pulse'
-                    : syncStatus === 'connecting'
-                    ? 'bg-amber-500 animate-ping'
-                    : 'bg-slate-400'
-                }`}
-              />
-              <span className="hidden md:inline">
-                {syncStatus === 'synced' ? 'Đồng bộ Firestore' : syncStatus === 'connecting' ? 'Đang kết nối...' : 'Ngoại tuyến'}
-              </span>
-            </div>
-
             {/* PWA Install */}
             <PWAInstallButton />
 
-            {/* Notification Bell */}
-            <button
-              onClick={onOpenNotifications}
-              className="relative p-2 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-              title="Thông báo thời gian thực"
-              aria-label="Thông báo"
-            >
-              <Bell className="w-4 h-4" />
-              {unreadNotificationsCount > 0 && (
-                <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-extrabold flex items-center justify-center">
-                  {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
-                </span>
-              )}
-            </button>
-
-            {/* Theme Picker Dropdown */}
-            <div className="relative">
+            {/* Inward Compact Utility Cluster: Flame Sync, Notifications, Theme Color, Dark/Light Mode */}
+            <div className="flex items-center gap-0.5 bg-slate-100/90 dark:bg-slate-800/80 p-1 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
+              {/* Nút 'Đồng bộ Firestore' đổi thành biểu tượng ngọn lửa */}
               <button
-                onClick={() => setShowThemePicker(!showThemePicker)}
-                className="p-2 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-                title="Đổi chủ đề màu sắc"
-                aria-label="Chủ đề màu sắc"
+                type="button"
+                onClick={onOpenAuth}
+                className={`p-2 rounded-xl transition cursor-pointer relative ${
+                  syncStatus === 'synced'
+                    ? 'text-amber-500 hover:text-amber-600 dark:text-amber-400'
+                    : syncStatus === 'connecting'
+                    ? 'text-amber-400 animate-pulse'
+                    : 'text-slate-400 hover:text-slate-500'
+                }`}
+                title={
+                  syncStatus === 'synced'
+                    ? 'Cơ sở dữ liệu Firestore đang đồng bộ thời gian thực (Biểu tượng ngọn lửa)'
+                    : syncStatus === 'connecting'
+                    ? 'Đang kết nối Firestore cloud...'
+                    : 'Chế độ ngoại tuyến'
+                }
+                aria-label="Đồng bộ Firestore"
               >
-                <Palette className="w-4 h-4 text-sky-500" />
+                <Flame
+                  className={`w-4 h-4 ${
+                    syncStatus === 'synced'
+                      ? 'fill-amber-500 text-amber-500 drop-shadow-[0_0_6px_rgba(245,158,11,0.5)]'
+                      : syncStatus === 'connecting'
+                      ? 'fill-amber-400/40 text-amber-400 animate-bounce'
+                      : 'text-slate-400'
+                  }`}
+                />
+                {syncStatus === 'synced' && (
+                  <span className="absolute bottom-1 right-1 w-1.5 h-1.5 rounded-full bg-emerald-500 ring-1 ring-white dark:ring-slate-900" />
+                )}
               </button>
 
-              {showThemePicker && (
-                <div className="absolute right-0 mt-2 w-44 rounded-xl bg-white dark:bg-slate-900 shadow-xl border border-slate-200 dark:border-slate-800 p-2 z-50 space-y-1">
-                  <div className="text-[11px] font-bold text-slate-400 px-2 py-1 uppercase">Chọn chủ đề</div>
-                  {colorThemes.map((col) => (
-                    <button
-                      key={col.id}
-                      onClick={() => {
-                        onThemeColorChange(col.id as any);
-                        setShowThemePicker(false);
-                      }}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-                    >
-                      <span className={`w-3 h-3 rounded-full ${col.bg}`} />
-                      <span>{col.label}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
+              {/* Notification Bell */}
+              <button
+                type="button"
+                onClick={onOpenNotifications}
+                className="relative p-2 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 rounded-xl hover:bg-white dark:hover:bg-slate-700 transition cursor-pointer"
+                title="Thông báo thời gian thực"
+                aria-label="Thông báo"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadNotificationsCount > 0 && (
+                  <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-rose-500 text-white text-[10px] font-extrabold flex items-center justify-center">
+                    {unreadNotificationsCount > 9 ? '9+' : unreadNotificationsCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Theme Color Picker */}
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowThemePicker(!showThemePicker)}
+                  className="p-2 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 rounded-xl hover:bg-white dark:hover:bg-slate-700 transition cursor-pointer"
+                  title="Đổi chủ đề màu sắc"
+                  aria-label="Chủ đề màu sắc"
+                >
+                  <Palette className="w-4 h-4 text-sky-500" />
+                </button>
+
+                {showThemePicker && (
+                  <div className="absolute right-0 mt-2 w-44 rounded-xl bg-white dark:bg-slate-900 shadow-xl border border-slate-200 dark:border-slate-800 p-2 z-50 space-y-1">
+                    <div className="text-[11px] font-bold text-slate-400 px-2 py-1 uppercase">Chọn chủ đề</div>
+                    {colorThemes.map((col) => (
+                      <button
+                        key={col.id}
+                        type="button"
+                        onClick={() => {
+                          onThemeColorChange(col.id as any);
+                          setShowThemePicker(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                      >
+                        <span className={`w-3 h-3 rounded-full ${col.bg}`} />
+                        <span>{col.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Dark / Light Toggle */}
+              <button
+                type="button"
+                onClick={onToggleDark}
+                className="p-2 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 rounded-xl hover:bg-white dark:hover:bg-slate-700 transition cursor-pointer"
+                title="Giao diện Sáng/Tối"
+                aria-label="Đổi giao diện"
+              >
+                {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
+              </button>
             </div>
 
-            {/* Dark / Light Toggle */}
-            <button
-              onClick={onToggleDark}
-              className="p-2 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-              title="Giao diện Sáng/Tối"
-              aria-label="Đổi giao diện"
-            >
-              {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4" />}
-            </button>
+            {/* Auth Buttons: "Đăng nhập: [Tên]" + Dedicated "Đăng xuất" button next to it */}
+            {!isLoggedIn ? (
+              <button
+                type="button"
+                onClick={onOpenAuth}
+                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-100 transition whitespace-nowrap shadow-2xs cursor-pointer"
+                title="Đăng nhập vào hệ thống giải đấu"
+              >
+                <LogIn className="w-3.5 h-3.5 text-sky-600" />
+                <span>Đăng nhập</span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={onOpenAuth}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-xs font-bold rounded-xl border transition whitespace-nowrap shadow-2xs cursor-pointer max-w-[210px] truncate ${
+                    user.authProvider === 'google'
+                      ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800 hover:bg-blue-100'
+                      : user.role === 'admin'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100'
+                      : 'bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border-sky-300 dark:border-sky-800 hover:bg-sky-100'
+                  }`}
+                  title={`Tài khoản đang đăng nhập: ${user.displayName || user.username} (${user.role})`}
+                >
+                  {user.authProvider === 'google' ? (
+                    <GoogleIcon />
+                  ) : user.role === 'admin' ? (
+                    <Shield className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  ) : (
+                    <UserCheck className="w-3.5 h-3.5 text-sky-600 shrink-0" />
+                  )}
+                  <span className="truncate">
+                    Đăng nhập: {user.displayName || user.username}
+                  </span>
+                </button>
 
-            {/* Google / Account Switcher Button */}
-            <button
-              onClick={onOpenAuth}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border transition whitespace-nowrap shrink-0 shadow-xs cursor-pointer ${
-                user.role === 'viewer'
-                  ? 'bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-100 border-slate-300 dark:border-slate-700'
-                  : user.authProvider === 'google'
-                  ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800 hover:bg-blue-100'
-                  : user.role === 'admin'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800 hover:bg-emerald-100'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300'
-              }`}
-              title={
-                user.role === 'viewer'
-                  ? 'Đăng nhập bằng tài khoản Google hoặc tài khoản BTC'
-                  : `Tài khoản: ${user.displayName} (${user.role})`
-              }
-            >
-              {user.role === 'viewer' ? (
-                <>
-                  <GoogleIcon />
-                  <span className="hidden sm:inline">Đăng Nhập Gmail (Xác Nhận)</span>
-                  <span className="sm:hidden">Gmail</span>
-                </>
-              ) : user.authProvider === 'google' ? (
-                <>
-                  <GoogleIcon />
-                  <span className="hidden sm:inline">Gmail: {user.displayName}</span>
-                  <span className="sm:hidden">Gmail</span>
-                </>
-              ) : user.role === 'admin' ? (
-                <>
-                  <Shield className="w-3.5 h-3.5 text-emerald-600" />
-                  <span className="hidden sm:inline">Admin: {user.displayName}</span>
-                  <span className="sm:hidden">admin</span>
-                </>
-              ) : (
-                <>
-                  <UserCheck className="w-3.5 h-3.5 text-sky-600" />
-                  <span className="hidden sm:inline">{getRoleLabel()}</span>
-                  <span className="sm:hidden">{user.displayName || 'BTC'}</span>
-                </>
-              )}
-            </button>
+                {onLogout && (
+                  <button
+                    type="button"
+                    onClick={onLogout}
+                    className="flex items-center gap-1 px-2.5 py-2 text-xs font-bold rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/60 transition shadow-2xs cursor-pointer shrink-0"
+                    title="Đăng xuất khỏi phiên làm việc hiện tại"
+                  >
+                    <LogOut className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                    <span className="hidden sm:inline">Đăng xuất</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

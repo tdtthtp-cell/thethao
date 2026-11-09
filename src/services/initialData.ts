@@ -5,6 +5,7 @@ import {
   Sport,
   Team,
   TournamentConfig,
+  VenueConfig,
   NotificationItem,
   UserAccount,
   UserProfile,
@@ -138,6 +139,23 @@ export const DEFAULT_GUEST_USER: UserProfile = {
   title: 'Chưa đăng nhập',
 };
 
+export const DEFAULT_VENUES: VenueConfig[] = [
+  {
+    id: 'main',
+    name: 'Điểm chính',
+    code: 'ĐC',
+    description: 'Cơ sở chính (Các bảng đấu có ký tự đầu K10, K11, K12 thi đấu)',
+    isDefault: true,
+  },
+  {
+    id: 'branch',
+    name: 'Phân hiệu',
+    code: 'PH',
+    description: 'Cơ sở phân hiệu (Khối 10, Khối 11, Khối 12 thi đấu)',
+    isDefault: false,
+  },
+];
+
 export const DEFAULT_CONFIG: TournamentConfig = {
   year: CURRENT_YEAR,
   schoolName: 'THPT HUỲNH TẤN PHÁT',
@@ -149,6 +167,7 @@ export const DEFAULT_CONFIG: TournamentConfig = {
   activeSportId: 'volleyball',
   activeCategoryId: 'ALL',
   customGroups: ['Khối 10', 'Khối 11', 'Khối 12'],
+  venues: DEFAULT_VENUES,
   rankingCriteria: DEFAULT_RANKING_CRITERIA,
   themeColor: 'blue',
   e2eeEnabled: true,

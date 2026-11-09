@@ -155,6 +155,14 @@ export interface Match {
   notes?: string;
 }
 
+export interface VenueConfig {
+  id: string; // 'main' | 'branch' | custom ID
+  name: string; // 'Điểm chính', 'Phân hiệu'
+  code: string; // 'ĐC', 'PH'
+  description?: string;
+  isDefault?: boolean;
+}
+
 export interface TournamentConfig {
   year: number; // Actual tournament year (e.g. new Date().getFullYear())
   schoolName: string;
@@ -168,6 +176,7 @@ export interface TournamentConfig {
   sportType?: SportType;
   matchSetsRule?: number;
   customGroups: string[];
+  venues?: VenueConfig[]; // Tournament locations (Điểm chính, Phân hiệu)
   rankingCriteria: RankingCriterionConfig[];
   themeColor: 'blue' | 'emerald' | 'amber' | 'rose' | 'violet';
   e2eeEnabled: boolean;

@@ -31,6 +31,12 @@ import {
 import { Athlete, Team, TeamGender, TournamentConfig, UserProfile } from '../types';
 import { TeamExcelImportModal } from './TeamExcelImportModal';
 import { downloadTeamImportTemplateExcel } from '../services/teamImport';
+import {
+  getVenueForGroup,
+  getVenueInfo,
+  sortGroupsByVenue,
+  sortTeamsByVenue,
+} from '../services/venueService';
 
 interface TabTeamsProps {
   teams: Team[];
@@ -62,6 +68,7 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
   onOpenAthleteExcelImport,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedVenue, setSelectedVenue] = useState<'ALL' | 'main' | 'branch'>('ALL');
   const [selectedGroup, setSelectedGroup] = useState<string>('ALL');
   const [selectedGender, setSelectedGender] = useState<'ALL' | TeamGender>('ALL');
 
@@ -99,9 +106,9 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
     return map;
   }, [athletes]);
 
-  // Filtered teams
+  // Filtered teams with venue order: Điểm chính (K10, K11, K12) first, then Phân hiệu (Khối 10, Khối 11, Khối 12)
   const filteredTeams = useMemo(() => {
-    return teams.filter((t) => {
+    const list = teams.filter((t) => {
       // Sport scope: if team has sportId, must match activeSportId
       if (t.sportId && t.sportId !== config.activeSportId) return false;
 
@@ -115,6 +122,10 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
         return false;
       }
 
+      // Venue filter
+      const teamVenue = getVenueForGroup(t.group);
+      const matchVenue = selectedVenue === 'ALL' || teamVenue === selectedVenue;
+
       const matchGroup = selectedGroup === 'ALL' || t.group === selectedGroup;
       const matchGender =
         selectedGender === 'ALL' ||
@@ -124,9 +135,11 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
         !searchQuery.trim() ||
         t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         (t.coachName && t.coachName.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchGroup && matchGender && matchSearch;
+      return matchVenue && matchGroup && matchGender && matchSearch;
     });
-  }, [teams, config.activeSportId, config.activeCategoryId, selectedGroup, selectedGender, searchQuery]);
+
+    return sortTeamsByVenue(list);
+  }, [teams, config.activeSportId, config.activeCategoryId, selectedVenue, selectedGroup, selectedGender, searchQuery]);
 
   // Summary statistics for current sport
   const currentSportTeams = useMemo(() => {
@@ -138,17 +151,20 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
     const male = currentSportTeams.filter((t) => !t.gender || t.gender === 'male').length;
     const female = currentSportTeams.filter((t) => t.gender === 'female').length;
     const mixed = currentSportTeams.filter((t) => t.gender === 'mixed').length;
-    return { total, male, female, mixed };
+    const mainVenueCount = currentSportTeams.filter((t) => getVenueForGroup(t.group) === 'main').length;
+    const branchVenueCount = currentSportTeams.filter((t) => getVenueForGroup(t.group) === 'branch').length;
+    return { total, male, female, mixed, mainVenueCount, branchVenueCount };
   }, [currentSportTeams]);
 
   // View mode: 'by_group' (theo bảng / khối), 'table' (bảng tổng hợp gọn gàng), 'grid' (lưới thẻ)
   const [viewMode, setViewMode] = useState<'by_group' | 'table' | 'grid'>('by_group');
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
 
-  // Grouped teams by group / block
+  // Grouped teams sorted by venue: Điểm chính (K10, K11, K12) first, then Phân hiệu
   const teamsByGroup = useMemo(() => {
     const map: Record<string, Team[]> = {};
-    config.customGroups.forEach((g) => {
+    const sortedGroups = sortGroupsByVenue(config.customGroups);
+    sortedGroups.forEach((g) => {
       map[g] = [];
     });
     filteredTeams.forEach((t) => {
@@ -418,6 +434,64 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
         </div>
       </div>
 
+      {/* 2.5 Venue Filter Toolbar: Điểm chính (K10, K11, K12) vs Phân hiệu (Khối 10, Khối 11, Khối 12) */}
+      <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-extrabold text-slate-700 dark:text-slate-300 flex items-center gap-1.5 uppercase tracking-wider text-[11px]">
+            <span>Địa điểm thi đấu:</span>
+          </span>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setSelectedVenue('ALL')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                selectedVenue === 'ALL'
+                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border-slate-900 dark:border-white shadow-2xs'
+                  : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-300'
+              }`}
+            >
+              Tất cả địa điểm ({teamStats.total})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedVenue('main')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border ${
+                selectedVenue === 'main'
+                  ? 'bg-indigo-600 text-white border-indigo-600 shadow-2xs'
+                  : 'bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800 hover:border-indigo-300'
+              }`}
+            >
+              <span>📍 Điểm chính</span>
+              <span className="text-[10px] font-semibold opacity-90">(K10, K11, K12)</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-indigo-700/30 font-extrabold">
+                {teamStats.mainVenueCount}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedVenue('branch')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border ${
+                selectedVenue === 'branch'
+                  ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                  : 'bg-amber-50/70 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800 hover:border-amber-300'
+              }`}
+            >
+              <span>🏫 Phân hiệu</span>
+              <span className="text-[10px] font-semibold opacity-90">(Khối 10, Khối 11, Khối 12)</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-700/30 font-extrabold">
+                {teamStats.branchVenueCount}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <div className="text-[11px] text-slate-400">
+          * Đội bóng sắp xếp theo thứ tự: Điểm chính (K10, K11, K12) trước, Phân hiệu sau
+        </div>
+      </div>
+
       {/* 3. Filter and Search Toolbar */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-2xs flex flex-wrap items-center justify-between gap-3">
         {/* Search */}
@@ -635,7 +709,11 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
         /* MODE 1: GROUPED BY TABLE / BLOCK (GỌN GÀNG, THEO TỪNG BẢNG/KHỐI) */
         <div className="space-y-5">
           {Object.entries(teamsByGroup)
-            .filter(([groupName]) => selectedGroup === 'ALL' || groupName === selectedGroup)
+            .filter(([groupName]) => {
+              if (selectedGroup !== 'ALL' && groupName !== selectedGroup) return false;
+              if (selectedVenue !== 'ALL' && getVenueForGroup(groupName) !== selectedVenue) return false;
+              return true;
+            })
             .map(([groupName, groupTeams]) => {
               const isCollapsed = !!collapsedGroups[groupName];
               const grpTeamIds = groupTeams.map((t) => t.id);
@@ -647,6 +725,7 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
                 (sum, t) => sum + (athleteCountByTeam.get(t.id) || 0),
                 0
               );
+              const venueInfo = getVenueInfo(groupName, config.venues);
 
               return (
                 <div
@@ -677,6 +756,13 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
                           >
                             {groupName}
                           </h3>
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] font-extrabold border ${venueInfo.badgeColor}`}
+                            title={venueInfo.description}
+                          >
+                            <span>{venueInfo.icon}</span>
+                            <span>{venueInfo.name}</span>
+                          </span>
                           <span className="text-xs text-slate-400">·</span>
                           <span className="text-xs font-bold text-sky-600 dark:text-sky-400">
                             {groupTeams.length} đội

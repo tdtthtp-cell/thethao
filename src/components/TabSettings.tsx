@@ -12,6 +12,7 @@ import {
   Edit2,
   Trash2,
   UserPlus,
+  MapPin,
 } from 'lucide-react';
 import {
   Sport,
@@ -19,7 +20,9 @@ import {
   UserAccount,
   UserProfile,
   UserRole,
+  VenueConfig,
 } from '../types';
+import { DEFAULT_VENUES } from '../services/initialData';
 
 interface TabSettingsProps {
   config: TournamentConfig;
@@ -767,6 +770,74 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
               </button>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* VENUE CONFIGURATION (ĐỊA ĐIỂM THI ĐẤU: ĐIỂM CHÍNH & PHÂN HIỆU) */}
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-4">
+        <div className="flex flex-wrap items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 gap-2">
+          <div>
+            <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-sky-600" />
+              Địa Điểm Tổ Chức Thi Đấu (Điểm Chính & Phân Hiệu)
+            </h3>
+            <p className="text-xs text-slate-400">
+              Giải đấu diễn ra tại 2 địa điểm cách xa nhau. Mặc định bảng K10, K11, K12 tại Điểm chính; Khối 10, Khối 11, Khối 12 tại Phân hiệu.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {(config.venues && config.venues.length > 0 ? config.venues : DEFAULT_VENUES).map((v) => {
+            const isMain = v.id === 'main';
+            return (
+              <div
+                key={v.id}
+                className={`p-4 rounded-2xl border space-y-2.5 ${
+                  isMain
+                    ? 'bg-indigo-50/50 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800'
+                    : 'bg-amber-50/50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800'
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{isMain ? '📍' : '🏫'}</span>
+                    <strong className="text-sm font-extrabold text-slate-900 dark:text-white">
+                      {v.name}
+                    </strong>
+                    <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
+                      Mã: {v.code}
+                    </span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                  {v.description || (isMain ? 'Dành cho các bảng đấu K10, K11, K12' : 'Dành cho các bảng đấu Khối 10, Khối 11, Khối 12')}
+                </p>
+
+                {isAdmin && (
+                  <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800/80 flex items-center gap-2 text-xs">
+                    <input
+                      type="text"
+                      defaultValue={v.name}
+                      onBlur={(e) => {
+                        const newName = e.target.value.trim();
+                        if (newName && newName !== v.name) {
+                          const current = config.venues || DEFAULT_VENUES;
+                          const updated = current.map((item) =>
+                            item.id === v.id ? { ...item, name: newName } : item
+                          );
+                          handleChange('venues', updated);
+                        }
+                      }}
+                      placeholder="Đổi tên địa điểm..."
+                      className="flex-1 px-2.5 py-1 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 

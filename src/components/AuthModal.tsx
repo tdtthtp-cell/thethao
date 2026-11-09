@@ -55,8 +55,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onSaveUser,
   onDeleteUser,
 }) => {
-  // Tabs: 'google' is the primary default, no password forced!
-  const [activeTab, setActiveTab] = useState<'google' | 'internal' | 'forgot' | 'admin_users'>('google');
+  // Tabs: 'internal' is the primary default, prioritized for BTC, referees, and secretaries!
+  const [activeTab, setActiveTab] = useState<'internal' | 'google' | 'forgot' | 'admin_users'>('internal');
 
   // Google / Gmail Auth state
   const [googleEmailInput, setGoogleEmailInput] = useState('tdtt.htp@gmail.com');
@@ -310,7 +310,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 Xác Thực & Đăng Nhập Hệ Thống
               </h2>
               <p className="text-xs text-slate-400">
-                Đăng nhập bằng Gmail có hỏi xác nhận, không ép mật khẩu ứng dụng
+                Ưu tiên tài khoản nội bộ (Admin, Trọng tài, Thư ký). Hỗ trợ đăng nhập Gmail có hỏi xác nhận.
               </p>
             </div>
           </div>
@@ -322,27 +322,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </button>
         </div>
 
-        {/* Tab Navigation */}
+        {/* Tab Navigation: Internal Account Prioritized First */}
         <div className="flex flex-wrap items-center gap-1.5 border-b border-slate-100 dark:border-slate-800 pb-2">
-          {/* TAB 1: GMAIL (Default) */}
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTab('google');
-              setErrorMsg('');
-              setSuccessMsg('');
-            }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-              activeTab === 'google'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
-            }`}
-          >
-            <GoogleIcon />
-            <span>Đăng Nhập Gmail (Xác Nhận)</span>
-          </button>
-
-          {/* TAB 2: INTERNAL ACCOUNT */}
+          {/* TAB 1: INTERNAL ACCOUNT (Priority 1) */}
           <button
             type="button"
             onClick={() => {
@@ -358,6 +340,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           >
             <KeyRound className="w-3.5 h-3.5" />
             <span>Tài Khoản Nội Bộ (Mật Khẩu)</span>
+          </button>
+
+          {/* TAB 2: GMAIL SIGN-IN */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('google');
+              setErrorMsg('');
+              setSuccessMsg('');
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              activeTab === 'google'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <GoogleIcon />
+            <span>Đăng Nhập Gmail (Xác Nhận)</span>
           </button>
 
           {/* TAB 3: FORGOT PASSWORD */}
@@ -414,7 +414,96 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
         )}
 
-        {/* TAB 1 CONTENT: GMAIL SIGN-IN WITH CONFIRMATION PROMPT (NO IN-APP PASSWORD!) */}
+        {/* TAB 1 CONTENT: INTERNAL ACCOUNT WITH PASSWORD (PRIORITIZED FOR BTC, REFEREES, SECRETARIES) */}
+        {activeTab === 'internal' && (
+          <form onSubmit={handleInternalLoginSubmit} className="space-y-4">
+            {currentUser.role !== 'viewer' && currentUser.authProvider !== 'google' && (
+              <div className="p-4 rounded-2xl border bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-xs bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+                    <Shield className="w-5 h-5 text-emerald-600" />
+                  </div>
+                  <div>
+                    <span className="text-slate-500 block text-[11px] font-medium">Đang đăng nhập tài khoản nội bộ:</span>
+                    <strong className="font-black text-sm text-emerald-700 dark:text-emerald-300">
+                      {currentUser.displayName}
+                    </strong>
+                    <span className="text-slate-500 text-xs ml-1.5">({currentUser.username})</span>
+                    <span className="text-slate-500 dark:text-slate-400 text-[11px] block mt-0.5">{currentUser.title}</span>
+                  </div>
+                </div>
+                {onLogout && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onLogout();
+                      onClose();
+                    }}
+                    className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 cursor-pointer shadow-xs shrink-0"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Đăng Xuất</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="p-3 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 rounded-2xl text-xs text-sky-800 dark:text-sky-300 flex items-start gap-2.5">
+              <KeyRound className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
+              <div>
+                <strong>Tài khoản nội bộ:</strong> Dành cho <strong>Ban tổ chức (admin)</strong>, <strong>Trọng tài</strong> và <strong>Thư ký</strong>. Nếu là Trưởng BTC dùng Gmail, vui lòng chuyển sang tab <strong>&quot;Đăng Nhập Gmail&quot;</strong>.
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                Tên Đăng Nhập Nội Bộ *
+              </label>
+              <input
+                type="text"
+                required
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="Nhập tên tài khoản (VD: admin, referee1, thuky1)..."
+                className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-sky-500"
+                autoFocus
+              />
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-xs font-semibold uppercase text-slate-500">Mật Khẩu *</label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab('forgot');
+                    setForgotUsername(username);
+                  }}
+                  className="text-[11px] font-bold text-sky-600 dark:text-sky-400 hover:underline"
+                >
+                  Quên mật khẩu?
+                </button>
+              </div>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Nhập mật khẩu nội bộ..."
+                className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-sky-500"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="w-full py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl text-xs transition shadow-xs cursor-pointer"
+            >
+              Đăng Nhập Nội Bộ
+            </button>
+          </form>
+        )}
+
+        {/* TAB 2 CONTENT: GMAIL SIGN-IN WITH CONFIRMATION PROMPT (NO IN-APP PASSWORD!) */}
         {activeTab === 'google' && (
           <div className="space-y-4">
             {/* If currently logged in, show status & logout button */}
@@ -566,64 +655,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
             )}
           </div>
-        )}
-
-        {/* TAB 2 CONTENT: INTERNAL ACCOUNT WITH PASSWORD (Referees, Secretaries) */}
-        {activeTab === 'internal' && (
-          <form onSubmit={handleInternalLoginSubmit} className="space-y-4">
-            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2.5">
-              <KeyRound className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <strong>Lưu ý:</strong> Mục này chỉ dành cho <strong>Trọng tài chính</strong> và <strong>Thư ký bàn</strong> được cấp tài khoản & mật khẩu nội bộ. Nếu là Trưởng Ban Tổ Chức, vui lòng chuyển sang tab <strong>"Đăng Nhập Gmail"</strong> để đăng nhập không cần mật khẩu.
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                Tên Đăng Nhập Nội Bộ *
-              </label>
-              <input
-                type="text"
-                required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Nhập tên tài khoản (VD: admin, referee1, thuky1)..."
-                className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-sky-500"
-                autoFocus
-              />
-            </div>
-
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-xs font-semibold uppercase text-slate-500">Mật Khẩu *</label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('forgot');
-                    setForgotUsername(username);
-                  }}
-                  className="text-[11px] font-bold text-sky-600 dark:text-sky-400 hover:underline"
-                >
-                  Quên mật khẩu?
-                </button>
-              </div>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Nhập mật khẩu nội bộ..."
-                className="w-full px-3.5 py-2.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-sky-500"
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="w-full py-2.5 bg-sky-600 hover:bg-sky-700 text-white font-bold rounded-xl text-xs transition shadow-xs cursor-pointer"
-            >
-              Đăng Nhập Nội Bộ
-            </button>
-          </form>
         )}
 
         {/* TAB 3 CONTENT: FORGOT PASSWORD */}
