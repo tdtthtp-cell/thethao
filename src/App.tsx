@@ -509,7 +509,7 @@ export default function App() {
   };
 
   // Handlers for Athletes & Teams
-  const handleSaveAthlete = (ath: Athlete) => {
+  const handleSaveAthlete = async (ath: Athlete) => {
     setAthletes((prev) => {
       const idx = prev.findIndex((a) => a.id === ath.id);
       if (idx >= 0) {
@@ -519,7 +519,23 @@ export default function App() {
       }
       return [ath, ...prev];
     });
-    syncAthleteToFirestore(ath);
+
+    try {
+      await syncAthleteToFirestore(ath);
+      const notif: NotificationItem = {
+        id: 'N_' + Date.now(),
+        type: 'system',
+        title: 'Đã lưu vận động viên vào CSDL',
+        message: `VĐV ${ath.name} (#${ath.jerseyNumber} - ${ath.teamName}) đã được đồng bộ vào cơ sở dữ liệu đám mây.`,
+        timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+        read: false,
+      };
+      setNotifications((prev) => [notif, ...prev]);
+    } catch (err) {
+      console.error('Lỗi khi lưu VĐV vào Firestore:', err);
+    }
+
+    broadcastTournamentUpdate('ATHLETES_UPDATED', { athleteId: ath.id });
   };
 
   const handleDeleteAthlete = (athleteId: string) => {
@@ -589,7 +605,7 @@ export default function App() {
     setNotifications((prev) => [notif, ...prev]);
   };
 
-  const handleSaveTeam = (team: Team) => {
+  const handleSaveTeam = async (team: Team) => {
     setTeams((prev) => {
       const idx = prev.findIndex((t) => t.id === team.id);
       if (idx >= 0) {
@@ -599,7 +615,29 @@ export default function App() {
       }
       return [...prev, team];
     });
-    syncTeamToFirestore(team);
+
+    // Check if new group
+    if (team.group && !config.customGroups.includes(team.group)) {
+      const updatedConfig = { ...config, customGroups: [...config.customGroups, team.group] };
+      setConfig(updatedConfig);
+      syncConfigToFirestore(updatedConfig);
+    }
+
+    try {
+      await syncTeamToFirestore(team);
+      const notif: NotificationItem = {
+        id: 'N_' + Date.now(),
+        type: 'system',
+        title: 'Đã lưu đội vào CSDL',
+        message: `Đội "${team.name}" (${team.group}) đã được đồng bộ vào cơ sở dữ liệu đám mây.`,
+        timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+        read: false,
+      };
+      setNotifications((prev) => [notif, ...prev]);
+    } catch (err) {
+      console.error('Lỗi khi lưu đội vào Firestore:', err);
+    }
+
     broadcastTournamentUpdate('TEAMS_UPDATED', { teamId: team.id });
   };
 

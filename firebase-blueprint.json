@@ -43,6 +43,10 @@
         "id": { "type": "string" },
         "name": { "type": "string" },
         "group": { "type": "string" },
+        "sportId": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "categoryName": { "type": "string" },
+        "gender": { "type": "string" },
         "coachName": { "type": "string" },
         "contactPhone": { "type": "string" },
         "color": { "type": "string" }
@@ -59,6 +63,8 @@
         "teamId": { "type": "string" },
         "teamName": { "type": "string" },
         "group": { "type": "string" },
+        "sportId": { "type": "string" },
+        "categoryId": { "type": "string" },
         "jerseyNumber": { "type": "number" },
         "position": { "type": "string" },
         "dateOfBirth": { "type": "string" },
@@ -66,7 +72,11 @@
         "phoneEncrypted": { "type": "string" },
         "status": { "type": "string" },
         "registeredAt": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "isCaptain": { "type": "boolean" },
         "goalsOrPoints": { "type": "number" },
+        "yellowCards": { "type": "number" },
+        "redCards": { "type": "number" },
         "mvpCount": { "type": "number" }
       },
       "required": ["id", "name", "teamId", "jerseyNumber"]

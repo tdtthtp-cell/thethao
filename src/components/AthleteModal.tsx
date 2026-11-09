@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Lock, ShieldCheck, UserPlus } from 'lucide-react';
 import { Athlete, Team, UserProfile } from '../types';
 import { encryptText } from '../services/crypto';
@@ -22,7 +22,7 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
 }) => {
   const [name, setName] = useState(athlete?.name || '');
   const [teamId, setTeamId] = useState(athlete?.teamId || (teams[0]?.id || ''));
-  const [jerseyNumber, setJerseyNumber] = useState<number>(athlete?.jerseyNumber || 10);
+  const [jerseyNumber, setJerseyNumber] = useState<number>(athlete?.jerseyNumber ?? 10);
   const [position, setPosition] = useState(athlete?.position || 'Tiền đạo / Chủ công');
   const [dateOfBirth, setDateOfBirth] = useState(athlete?.dateOfBirth || '2010-01-01');
   const [nationalId, setNationalId] = useState('');
@@ -30,7 +30,24 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
   const [status, setStatus] = useState<Athlete['status']>(athlete?.status || (user.role === 'admin' ? 'approved' : 'pending'));
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Sync state whenever modal opens or active athlete prop changes
+  useEffect(() => {
+    if (isOpen) {
+      setName(athlete?.name || '');
+      setTeamId(athlete?.teamId || (teams[0]?.id || ''));
+      setJerseyNumber(athlete?.jerseyNumber ?? 10);
+      setPosition(athlete?.position || 'Tiền đạo / Chủ công');
+      setDateOfBirth(athlete?.dateOfBirth || '2010-01-01');
+      setNationalId('');
+      setPhone('');
+      setStatus(athlete?.status || (user.role === 'admin' ? 'approved' : 'pending'));
+      setIsSubmitting(false);
+    }
+  }, [isOpen, athlete, teams, user.role]);
+
   if (!isOpen) return null;
+
+  const isEditing = Boolean(athlete && athlete.id && athlete.id.trim() !== '');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,22 +61,25 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
     const encPhone = phone ? await encryptText(phone) : (athlete?.phoneEncrypted || 'e2ee:aXRtc3BvcnRfZW5j');
 
     const athleteData: Athlete = {
-      id: athlete?.id || 'A_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      id: isEditing ? athlete!.id : ('A_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6)),
       name: name.trim(),
       teamId: selectedTeam ? selectedTeam.id : 'T_DEFAULT',
       teamName: selectedTeam ? selectedTeam.name : 'Đội Tự Do',
       group: selectedTeam ? selectedTeam.group : 'Khối 10',
+      sportId: selectedTeam?.sportId,
+      categoryId: selectedTeam?.categoryId,
       jerseyNumber: Number(jerseyNumber) || 1,
       position: position.trim() || 'Vận động viên',
       dateOfBirth: dateOfBirth || '2010-01-01',
       nationalIdEncrypted: encNationalId,
       phoneEncrypted: encPhone,
       status: user.role === 'admin' ? status : 'pending',
-      registeredAt: athlete?.registeredAt || new Date().toISOString().slice(0, 10),
+      registeredAt: (isEditing && athlete?.registeredAt) ? athlete.registeredAt : new Date().toISOString().slice(0, 10),
       goalsOrPoints: athlete?.goalsOrPoints || 0,
       yellowCards: athlete?.yellowCards || 0,
       redCards: athlete?.redCards || 0,
       mvpCount: athlete?.mvpCount || 0,
+      isCaptain: athlete?.isCaptain,
     };
 
     setIsSubmitting(false);
@@ -78,7 +98,7 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-base text-slate-900 dark:text-white">
-                {athlete ? 'Chỉnh Sửa Hồ Sơ VĐV' : 'Đăng Ký Vận Động Viên Mới'}
+                {isEditing ? 'Chỉnh Sửa Hồ Sơ VĐV' : 'Đăng Ký Vận Động Viên Mới'}
               </h3>
               <p className="text-xs text-slate-400">Hồ sơ được bảo mật bằng mã hóa đầu cuối E2EE AES-256</p>
             </div>

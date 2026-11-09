@@ -1,5 +1,6 @@
 import { getApps, initializeApp } from 'firebase/app';
 import {
+  initializeFirestore,
   getFirestore,
   doc,
   collection,
@@ -23,9 +24,41 @@ import {
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
-export const db = firebaseConfig.firestoreDatabaseId
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
-  : getFirestore(app);
+// Initialize Firestore with ignoreUndefinedProperties: true to prevent "Unsupported field value: undefined" errors
+let firestoreDb: ReturnType<typeof getFirestore>;
+try {
+  firestoreDb = initializeFirestore(
+    app,
+    { ignoreUndefinedProperties: true },
+    firebaseConfig.firestoreDatabaseId || undefined
+  );
+} catch {
+  firestoreDb = firebaseConfig.firestoreDatabaseId
+    ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+    : getFirestore(app);
+}
+
+export const db = firestoreDb;
+
+/**
+ * Deeply removes undefined properties from an object/array so Firestore setDoc / writeBatch will never fail
+ */
+export function cleanForFirestore<T>(data: T): T {
+  if (data === null || data === undefined) return data;
+  if (Array.isArray(data)) {
+    return data.map((item) => cleanForFirestore(item)) as unknown as T;
+  }
+  if (typeof data === 'object') {
+    const res: Record<string, any> = {};
+    for (const [key, val] of Object.entries(data as Record<string, any>)) {
+      if (val !== undefined) {
+        res[key] = cleanForFirestore(val);
+      }
+    }
+    return res as T;
+  }
+  return data;
+}
 
 // Test connection on boot
 export async function testFirestoreConnection(): Promise<boolean> {
@@ -209,25 +242,31 @@ export function subscribeToFirestore(callbacks: {
 // 2. Remote Mutation Handlers
 export async function syncConfigToFirestore(config: TournamentConfig) {
   try {
-    await setDoc(doc(db, CONFIG_COL, 'tournament'), config, { merge: true });
+    const cleaned = cleanForFirestore(config);
+    await setDoc(doc(db, CONFIG_COL, 'tournament'), cleaned, { merge: true });
   } catch (err) {
-    console.warn('Error syncing config to Firestore:', err);
+    console.error('Error syncing config to Firestore:', err);
+    throw err;
   }
 }
 
 export async function syncSportToFirestore(sport: Sport) {
   try {
-    await setDoc(doc(db, SPORTS_COL, sport.id), sport);
+    const cleaned = cleanForFirestore(sport);
+    await setDoc(doc(db, SPORTS_COL, sport.id), cleaned, { merge: true });
   } catch (err) {
-    console.warn('Error syncing sport to Firestore:', err);
+    console.error('Error syncing sport to Firestore:', err);
+    throw err;
   }
 }
 
 export async function syncTeamToFirestore(team: Team) {
   try {
-    await setDoc(doc(db, TEAMS_COL, team.id), team);
+    const cleaned = cleanForFirestore(team);
+    await setDoc(doc(db, TEAMS_COL, team.id), cleaned, { merge: true });
   } catch (err) {
-    console.warn('Error syncing team to Firestore:', err);
+    console.error('Error syncing team to Firestore:', err);
+    throw err;
   }
 }
 
@@ -236,11 +275,13 @@ export async function syncMultipleTeamsToFirestore(teams: Team[]) {
   try {
     const batch = writeBatch(db);
     teams.forEach((t) => {
-      batch.set(doc(db, TEAMS_COL, t.id), t);
+      const cleaned = cleanForFirestore(t);
+      batch.set(doc(db, TEAMS_COL, t.id), cleaned, { merge: true });
     });
     await batch.commit();
   } catch (err) {
-    console.warn('Error syncing multiple teams to Firestore:', err);
+    console.error('Error syncing multiple teams to Firestore:', err);
+    throw err;
   }
 }
 
@@ -259,7 +300,8 @@ export async function deleteTeamFromFirestore(teamId: string, deleteAthletesToo 
 
     await batch.commit();
   } catch (err) {
-    console.warn('Error deleting team from Firestore:', err);
+    console.error('Error deleting team from Firestore:', err);
+    throw err;
   }
 }
 
@@ -281,27 +323,33 @@ export async function deleteMultipleTeamsFromFirestore(teamIds: string[], delete
 
     await batch.commit();
   } catch (err) {
-    console.warn('Error bulk deleting teams from Firestore:', err);
+    console.error('Error bulk deleting teams from Firestore:', err);
+    throw err;
   }
 }
 
 export async function syncAthleteToFirestore(athlete: Athlete) {
   try {
-    await setDoc(doc(db, ATHLETES_COL, athlete.id), athlete);
+    const cleaned = cleanForFirestore(athlete);
+    await setDoc(doc(db, ATHLETES_COL, athlete.id), cleaned, { merge: true });
   } catch (err) {
-    console.warn('Error syncing athlete to Firestore:', err);
+    console.error('Error syncing athlete to Firestore:', err);
+    throw err;
   }
 }
 
 export async function syncMultipleAthletesToFirestore(athletes: Athlete[]) {
+  if (!athletes || athletes.length === 0) return;
   try {
     const batch = writeBatch(db);
     athletes.forEach((ath) => {
-      batch.set(doc(db, ATHLETES_COL, ath.id), ath);
+      const cleaned = cleanForFirestore(ath);
+      batch.set(doc(db, ATHLETES_COL, ath.id), cleaned, { merge: true });
     });
     await batch.commit();
   } catch (err) {
-    console.warn('Error batch syncing athletes to Firestore:', err);
+    console.error('Error batch syncing athletes to Firestore:', err);
+    throw err;
   }
 }
 
@@ -309,7 +357,8 @@ export async function deleteAthleteFromFirestore(athleteId: string) {
   try {
     await deleteDoc(doc(db, ATHLETES_COL, athleteId));
   } catch (err) {
-    console.warn('Error deleting athlete from Firestore:', err);
+    console.error('Error deleting athlete from Firestore:', err);
+    throw err;
   }
 }
 
@@ -321,27 +370,33 @@ export async function deleteMultipleAthletesFromFirestore(athleteIds: string[]) 
     });
     await batch.commit();
   } catch (err) {
-    console.warn('Error bulk deleting athletes from Firestore:', err);
+    console.error('Error bulk deleting athletes from Firestore:', err);
+    throw err;
   }
 }
 
 export async function syncMatchToFirestore(match: Match) {
   try {
-    await setDoc(doc(db, MATCHES_COL, match.id), match);
+    const cleaned = cleanForFirestore(match);
+    await setDoc(doc(db, MATCHES_COL, match.id), cleaned, { merge: true });
   } catch (err) {
-    console.warn('Error syncing match to Firestore:', err);
+    console.error('Error syncing match to Firestore:', err);
+    throw err;
   }
 }
 
 export async function syncAllMatchesToFirestore(matches: Match[]) {
+  if (!matches || matches.length === 0) return;
   try {
     const batch = writeBatch(db);
     matches.forEach((m) => {
-      batch.set(doc(db, MATCHES_COL, m.id), m);
+      const cleaned = cleanForFirestore(m);
+      batch.set(doc(db, MATCHES_COL, m.id), cleaned, { merge: true });
     });
     await batch.commit();
   } catch (err) {
-    console.warn('Error syncing matches batch to Firestore:', err);
+    console.error('Error syncing matches batch to Firestore:', err);
+    throw err;
   }
 }
 
@@ -349,23 +404,28 @@ export async function deleteMatchFromFirestore(matchId: string) {
   try {
     await deleteDoc(doc(db, MATCHES_COL, matchId));
   } catch (err) {
-    console.warn('Error deleting match from Firestore:', err);
+    console.error('Error deleting match from Firestore:', err);
+    throw err;
   }
 }
 
 export async function syncNotificationToFirestore(notif: NotificationItem) {
   try {
-    await setDoc(doc(db, NOTIFICATIONS_COL, notif.id), notif);
+    const cleaned = cleanForFirestore(notif);
+    await setDoc(doc(db, NOTIFICATIONS_COL, notif.id), cleaned, { merge: true });
   } catch (err) {
-    console.warn('Error syncing notification to Firestore:', err);
+    console.error('Error syncing notification to Firestore:', err);
+    throw err;
   }
 }
 
 export async function syncUserToFirestore(user: UserAccount) {
   try {
-    await setDoc(doc(db, USERS_COL, user.id), user);
+    const cleaned = cleanForFirestore(user);
+    await setDoc(doc(db, USERS_COL, user.id), cleaned, { merge: true });
   } catch (err) {
-    console.warn('Error syncing user account to Firestore:', err);
+    console.error('Error syncing user account to Firestore:', err);
+    throw err;
   }
 }
 
@@ -373,6 +433,7 @@ export async function deleteUserFromFirestore(userId: string) {
   try {
     await deleteDoc(doc(db, USERS_COL, userId));
   } catch (err) {
-    console.warn('Error deleting user account from Firestore:', err);
+    console.error('Error deleting user account from Firestore:', err);
+    throw err;
   }
 }
