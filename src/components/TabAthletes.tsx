@@ -687,20 +687,35 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
                     {/* Team Header Actions */}
                     <div className="flex items-center gap-2 ml-auto">
                       {canRegister && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (onAddAthleteForTeam) {
-                              onAddAthleteForTeam(team);
-                            } else {
-                              onOpenAddAthlete();
-                            }
-                          }}
-                          className="px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/80 dark:border-indigo-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Thêm VĐV</span>
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedTeamFilter(team.id);
+                              setIsAthleteImportModalOpen(true);
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200/80 dark:border-emerald-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                            title={`Nhập danh sách VĐV cho ${team.name} từ file Excel`}
+                          >
+                            <FileSpreadsheet className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Nhập Excel</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (onAddAthleteForTeam) {
+                                onAddAthleteForTeam(team);
+                              } else {
+                                onOpenAddAthlete();
+                              }
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 border border-indigo-200/80 dark:border-indigo-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Thêm VĐV</span>
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -1364,6 +1379,7 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
         isOpen={isAthleteImportModalOpen}
         onClose={() => setIsAthleteImportModalOpen(false)}
         teams={teams}
+        initialTeamFilter={selectedTeamFilter}
         onConfirmImport={(imported) => {
           if (onImportMultipleAthletes) {
             onImportMultipleAthletes(imported);

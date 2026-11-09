@@ -43,6 +43,8 @@ export interface ParsedAthleteItem {
   rawRowNumber: number;
   isValid: boolean;
   errorMessage?: string;
+  rawTeamFromExcel?: string;
+  matchMethod?: 'excel_column' | 'excel_sheet' | 'default_filter' | 'manual';
 }
 
 /**
@@ -547,14 +549,140 @@ export async function parseTeamsFromExcel(
 }
 
 /**
+ * Normalize team/class name for fuzzy comparison (e.g. "Lớp 10A1, 4" -> "10a1,4")
+ */
+export function normalizeTeamKey(s: string): string {
+  if (!s) return '';
+  return String(s)
+    .toLowerCase()
+    .replace(/^(lớp|lop|đội|doi|clb|team|chi đoàn|chi doan)\s+/i, '')
+    .replace(/\s*([,\/\-_&])\s*/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Extract tokens representing class numbers (e.g. "10a1,4" -> ["10a1", "10a4"])
+ */
+export function extractClassTokens(s: string): string[] {
+  const norm = normalizeTeamKey(s);
+  if (!norm) return [];
+  const tokens = norm.match(/\d+[a-z]\d+/g);
+  return tokens && tokens.length > 0 ? tokens : [norm];
+}
+
+export interface MatchedTeamResult {
+  team?: Team;
+  method: 'excel_column' | 'excel_sheet' | 'default_filter' | 'manual';
+  rawTeamFromExcel: string;
+}
+
+/**
+ * Robustly matches an athlete row to a Team by:
+ * 1. "Đội / Lớp" column in Excel (exact, normalized, token/partial match)
+ * 2. Sheet name (if row team column is empty or specifies only sheet)
+ * 3. Default team / pre-selected filter from user's current view
+ */
+export function matchTeamForAthlete(
+  rawTeam: string,
+  rawGroup: string,
+  sheetName: string,
+  teams: Team[],
+  defaultTeam?: Team
+): MatchedTeamResult {
+  const cleanRawTeam = (rawTeam || '').trim();
+  const cleanRawGroup = (rawGroup || '').trim();
+
+  // If column has an explicit team name:
+  if (cleanRawTeam) {
+    const normCandidate = normalizeTeamKey(cleanRawTeam);
+    const normGroup = cleanRawGroup.toLowerCase();
+
+    // 1. Direct ID or Name match
+    const directMatch = teams.find(
+      (t) => t.id === cleanRawTeam || t.name.toLowerCase() === cleanRawTeam.toLowerCase()
+    );
+    if (directMatch) {
+      return { team: directMatch, method: 'excel_column', rawTeamFromExcel: cleanRawTeam };
+    }
+
+    // 2. Normalized Name match (e.g. "10A7, 8" -> "10A7,8", "12C9, 12C11" -> "12C9,12C11")
+    const normMatches = teams.filter((t) => normalizeTeamKey(t.name) === normCandidate);
+    if (normMatches.length === 1) {
+      return { team: normMatches[0], method: 'excel_column', rawTeamFromExcel: cleanRawTeam };
+    }
+    if (normMatches.length > 1) {
+      const groupMatch = normMatches.find(
+        (t) => normGroup && (t.group.toLowerCase().includes(normGroup) || normGroup.includes(t.group.toLowerCase()))
+      );
+      return { team: groupMatch || normMatches[0], method: 'excel_column', rawTeamFromExcel: cleanRawTeam };
+    }
+
+    // 3. Substring / Class tokens match (e.g. "10A1" in "10A1,4")
+    const candidateTokens = extractClassTokens(cleanRawTeam);
+    const tokenMatches = teams.filter((t) => {
+      const teamTokens = extractClassTokens(t.name);
+      return candidateTokens.some((tok) => teamTokens.includes(tok));
+    });
+    if (tokenMatches.length === 1) {
+      return { team: tokenMatches[0], method: 'excel_column', rawTeamFromExcel: cleanRawTeam };
+    }
+    if (tokenMatches.length > 1) {
+      const groupMatch = tokenMatches.find(
+        (t) => normGroup && (t.group.toLowerCase().includes(normGroup) || normGroup.includes(t.group.toLowerCase()))
+      );
+      return { team: groupMatch || tokenMatches[0], method: 'excel_column', rawTeamFromExcel: cleanRawTeam };
+    }
+  }
+
+  // If row team column is empty or unparseable, check sheet name:
+  if (sheetName) {
+    const cleanSheet = sheetName.replace(/^(danhsachvdv|danh sách vđv|vdv|roster)_?/i, '').trim();
+    if (cleanSheet && !cleanSheet.toLowerCase().includes('huongdan')) {
+      const normSheet = normalizeTeamKey(cleanSheet);
+      const sheetDirectMatch = teams.find(
+        (t) => t.id === cleanSheet || t.name.toLowerCase() === cleanSheet.toLowerCase() || normalizeTeamKey(t.name) === normSheet
+      );
+      if (sheetDirectMatch) {
+        return { team: sheetDirectMatch, method: 'excel_sheet', rawTeamFromExcel: cleanSheet };
+      }
+      const sheetTokens = extractClassTokens(cleanSheet);
+      const tokenMatches = teams.filter((t) => {
+        const teamTokens = extractClassTokens(t.name);
+        return sheetTokens.some((tok) => teamTokens.includes(tok));
+      });
+      if (tokenMatches.length > 0) {
+        return { team: tokenMatches[0], method: 'excel_sheet', rawTeamFromExcel: cleanSheet };
+      }
+    }
+  }
+
+  // If still not matched, use defaultTeam from user filter:
+  if (defaultTeam) {
+    return { team: defaultTeam, method: 'default_filter', rawTeamFromExcel: cleanRawTeam || defaultTeam.name };
+  }
+
+  // If no default team and no match, return undefined team
+  return { team: undefined, method: 'manual', rawTeamFromExcel: cleanRawTeam };
+}
+
+/**
  * 4. Parse Athletes From Uploaded Excel file (.xlsx, .xls, .csv)
+ * Identifies team either by Excel row column or by active user filter
  */
 export async function parseAthletesFromExcel(
   file: File,
-  teams: Team[]
+  teams: Team[],
+  defaultTeamId?: string
 ): Promise<ParsedAthleteItem[]> {
   const data = await file.arrayBuffer();
   const wb = XLSX.read(data, { type: 'array' });
+
+  const defaultTeam = defaultTeamId
+    ? teams.find(
+        (t) => t.id === defaultTeamId || t.name.toLowerCase() === defaultTeamId.toLowerCase()
+      )
+    : undefined;
 
   const parsedAthletes: ParsedAthleteItem[] = [];
 
@@ -579,19 +707,69 @@ export async function parseAthletesFromExcel(
       const tempMap: Record<string, number> = {};
       row.forEach((cell, colIdx) => {
         const str = String(cell).trim().toLowerCase();
-        if (str.includes('họ và tên') || str.includes('ho va ten') || str.includes('họ tên') || str === 'vđv' || str === 'vdv' || str === 'tên' || str === 'name') {
+        if (
+          str.includes('họ và tên') ||
+          str.includes('ho va ten') ||
+          str.includes('họ tên') ||
+          str === 'vđv' ||
+          str === 'vdv' ||
+          str === 'tên' ||
+          str === 'name' ||
+          str.includes('vận động viên')
+        ) {
           tempMap['name'] = colIdx;
-        } else if (str.includes('số áo') || str.includes('so ao') || str === 'áo' || str === 'jersey') {
+        } else if (
+          str.includes('số áo') ||
+          str.includes('so ao') ||
+          str === 'áo' ||
+          str === 'jersey' ||
+          str.includes('số')
+        ) {
           tempMap['jersey'] = colIdx;
-        } else if (str.includes('đội') || str.includes('doi') || str.includes('lớp') || str.includes('lop') || str === 'team') {
+        } else if (
+          str.includes('đội') ||
+          str.includes('doi') ||
+          str.includes('lớp') ||
+          str.includes('lop') ||
+          str.includes('chi đoàn') ||
+          str.includes('đơn vị') ||
+          str === 'team' ||
+          str === 'class'
+        ) {
           tempMap['team'] = colIdx;
+        } else if (
+          str.includes('bảng') ||
+          str.includes('bang') ||
+          str.includes('khối') ||
+          str.includes('khoi') ||
+          str === 'group'
+        ) {
+          tempMap['group'] = colIdx;
         } else if (str.includes('vị trí') || str.includes('vi tri') || str === 'position') {
           tempMap['position'] = colIdx;
-        } else if (str.includes('ngày sinh') || str.includes('ngay sinh') || str.includes('dob') || str.includes('năm sinh')) {
+        } else if (
+          str.includes('ngày sinh') ||
+          str.includes('ngay sinh') ||
+          str.includes('dob') ||
+          str.includes('năm sinh') ||
+          str.includes('sinh')
+        ) {
           tempMap['dob'] = colIdx;
-        } else if (str.includes('điện thoại') || str.includes('sđt') || str.includes('sdt') || str.includes('phone')) {
+        } else if (
+          str.includes('điện thoại') ||
+          str.includes('sđt') ||
+          str.includes('sdt') ||
+          str.includes('phone') ||
+          str.includes('liên hệ') ||
+          str.includes('liên lạc')
+        ) {
           tempMap['phone'] = colIdx;
-        } else if (str.includes('cccd') || str.includes('cmnd') || str.includes('định danh') || str.includes('id')) {
+        } else if (
+          str.includes('cccd') ||
+          str.includes('cmnd') ||
+          str.includes('định danh') ||
+          str.includes('id')
+        ) {
           tempMap['nationalId'] = colIdx;
         }
       });
@@ -625,26 +803,23 @@ export async function parseAthletesFromExcel(
 
       const rawJersey = colMap['jersey'] !== undefined ? Number(row[colMap['jersey']]) || (parsedAthletes.length + 1) : 10;
       const rawTeamName = colMap['team'] !== undefined ? String(row[colMap['team']] || '').trim() : '';
+      const rawGroupName = colMap['group'] !== undefined ? String(row[colMap['group']] || '').trim() : '';
       const position = colMap['position'] !== undefined ? String(row[colMap['position']] || '').trim() || 'Vận động viên' : 'Vận động viên';
       const dob = colMap['dob'] !== undefined ? String(row[colMap['dob']] || '').trim() || '2010-01-01' : '2010-01-01';
       const phone = colMap['phone'] !== undefined ? String(row[colMap['phone']] || '').trim() : '';
       const nationalId = colMap['nationalId'] !== undefined ? String(row[colMap['nationalId']] || '').trim() : '';
 
-      // Match team
-      let matchedTeam = teams.find(
-        (t) => t.name.toLowerCase() === rawTeamName.toLowerCase() || t.id === rawTeamName
-      );
-      if (!matchedTeam && teams.length > 0) {
-        matchedTeam = teams[0];
-      }
+      // Match team intelligently
+      const matchResult = matchTeamForAthlete(rawTeamName, rawGroupName, sheetName, teams, defaultTeam);
+      const assignedTeam = matchResult.team || defaultTeam || (teams.length > 0 ? teams[0] : undefined);
 
       parsedAthletes.push({
         id: `A_IMP_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${parsedAthletes.length + 1}`,
         name,
         jerseyNumber: rawJersey,
-        teamName: matchedTeam ? matchedTeam.name : rawTeamName || 'Đội 10A1',
-        teamId: matchedTeam ? matchedTeam.id : 'T_DEFAULT',
-        group: matchedTeam ? matchedTeam.group : 'Khối 10',
+        teamName: assignedTeam ? assignedTeam.name : (rawTeamName || 'Đội Chưa Phân Lớp'),
+        teamId: assignedTeam ? assignedTeam.id : 'T_UNASSIGNED',
+        group: assignedTeam ? assignedTeam.group : (rawGroupName || 'Khối 10'),
         position,
         dateOfBirth: dob,
         phone,
@@ -652,6 +827,8 @@ export async function parseAthletesFromExcel(
         status: 'approved',
         rawRowNumber: r + 1,
         isValid: true,
+        rawTeamFromExcel: rawTeamName,
+        matchMethod: matchResult.method,
       });
     }
   });

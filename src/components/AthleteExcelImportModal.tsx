@@ -1,4 +1,4 @@
-import React, { useState, useId } from 'react';
+import React, { useState, useId, useEffect, useMemo } from 'react';
 import {
   X,
   Upload,
@@ -12,6 +12,8 @@ import {
   Trash2,
   Shield,
   Layers,
+  Sparkles,
+  Check,
 } from 'lucide-react';
 import { Athlete, Team } from '../types';
 import {
@@ -25,6 +27,7 @@ interface AthleteExcelImportModalProps {
   isOpen: boolean;
   onClose: () => void;
   teams: Team[];
+  initialTeamFilter?: string;
   onConfirmImport: (importedAthletes: Athlete[]) => void;
 }
 
@@ -32,6 +35,7 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
   isOpen,
   onClose,
   teams,
+  initialTeamFilter,
   onConfirmImport,
 }) => {
   const fileInputId = useId();
@@ -42,7 +46,30 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
   const [searchFilter, setSearchFilter] = useState('');
   const [teamFilter, setTeamFilter] = useState('ALL');
 
+  // Selected default team when importing (can be set by user or derived from active team filter)
+  const [targetTeamId, setTargetTeamId] = useState<string>('');
+
+  useEffect(() => {
+    if (isOpen) {
+      if (initialTeamFilter && initialTeamFilter !== 'ALL') {
+        const found = teams.find((t) => t.id === initialTeamFilter || t.name.toLowerCase() === initialTeamFilter.toLowerCase());
+        setTargetTeamId(found ? found.id : (teams[0]?.id || ''));
+      } else if (teams.length > 0) {
+        setTargetTeamId(teams[0].id);
+      }
+    } else {
+      // Clear file on close
+      setFile(null);
+      setPreviewAthletes([]);
+      setSelectedIds(new Set());
+      setSearchFilter('');
+      setTeamFilter('ALL');
+    }
+  }, [isOpen, initialTeamFilter, teams]);
+
   if (!isOpen) return null;
+
+  const currentTargetTeam = teams.find((t) => t.id === targetTeamId) || teams[0];
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
@@ -54,7 +81,8 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
     setFile(f);
     setIsLoading(true);
     try {
-      const res = await parseAthletesFromExcel(f, teams);
+      // Pass targetTeamId as the default fallback team for unmatched rows or if column is absent
+      const res = await parseAthletesFromExcel(f, teams, targetTeamId || undefined);
       setPreviewAthletes(res);
       setSelectedIds(new Set(res.map((a) => a.id)));
     } catch (err) {
@@ -77,9 +105,26 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
               teamId: targetTeam.id,
               teamName: targetTeam.name,
               group: targetTeam.group,
+              matchMethod: 'manual',
             }
           : a
       )
+    );
+  };
+
+  // Bulk assign all athletes to a selected team
+  const handleAssignAllToTeam = (teamIdToAssign: string) => {
+    const targetTeam = teams.find((t) => t.id === teamIdToAssign);
+    if (!targetTeam) return;
+
+    setPreviewAthletes((prev) =>
+      prev.map((a) => ({
+        ...a,
+        teamId: targetTeam.id,
+        teamName: targetTeam.name,
+        group: targetTeam.group,
+        matchMethod: 'manual',
+      }))
     );
   };
 
@@ -109,12 +154,22 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
     });
   };
 
+  // Group stats for preview
+  const athletesCountByTeam = useMemo(() => {
+    const map: Record<string, number> = {};
+    previewAthletes.forEach((a) => {
+      map[a.teamName] = (map[a.teamName] || 0) + 1;
+    });
+    return map;
+  }, [previewAthletes]);
+
   const filteredAthletes = previewAthletes.filter((a) => {
     const matchSearch =
       !searchFilter.trim() ||
       a.name.toLowerCase().includes(searchFilter.toLowerCase()) ||
       a.jerseyNumber.toString().includes(searchFilter) ||
-      a.teamName.toLowerCase().includes(searchFilter.toLowerCase());
+      a.teamName.toLowerCase().includes(searchFilter.toLowerCase()) ||
+      (a.rawTeamFromExcel && a.rawTeamFromExcel.toLowerCase().includes(searchFilter.toLowerCase()));
 
     const matchTeam = teamFilter === 'ALL' || a.teamId === teamFilter || a.teamName === teamFilter;
     return matchSearch && matchTeam;
@@ -139,6 +194,8 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
         ? await encryptText(item.phone)
         : 'e2ee:aXRtc3BvcnRfZW5j';
 
+      const foundTeam = teams.find((t) => t.id === item.teamId);
+
       finalAthletes.push({
         id: `A_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${finalAthletes.length + 1}`,
         name: item.name,
@@ -146,6 +203,8 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
         teamId: item.teamId,
         teamName: item.teamName,
         group: item.group,
+        sportId: foundTeam?.sportId,
+        categoryId: foundTeam?.categoryId,
         position: item.position,
         dateOfBirth: item.dateOfBirth,
         nationalIdEncrypted: encId,
@@ -267,6 +326,63 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
                 </label>
               </div>
 
+              {/* Team Auto-Detection & Quick Assignment Bar */}
+              <div className="p-3.5 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-2xl border border-indigo-200/80 dark:border-indigo-800/80 space-y-2.5 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 font-bold text-indigo-900 dark:text-indigo-200">
+                    <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                    <span>Quy tắc phân bổ Đội / Lớp:</span>
+                    <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                      (Tự động nhận diện từ cột "Đội / Lớp" hoặc gán theo bộ lọc)
+                    </span>
+                  </div>
+
+                  {/* Bulk Assign All Button */}
+                  {targetTeamId && (
+                    <button
+                      type="button"
+                      onClick={() => handleAssignAllToTeam(targetTeamId)}
+                      className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                      title="Gán tất cả vận động viên trong danh sách cho đội này"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Gán tất cả cho {currentTargetTeam?.name}</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3 pt-1 border-t border-indigo-100 dark:border-indigo-900/60 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-600 dark:text-slate-300 font-semibold">Đội ưu tiên / Bộ lọc:</span>
+                    <select
+                      value={targetTeamId}
+                      onChange={(e) => setTargetTeamId(e.target.value)}
+                      className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 rounded-lg text-xs font-bold text-indigo-700 dark:text-indigo-300 outline-none"
+                    >
+                      {teams.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} ({t.group})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Detected Distribution Chips */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-slate-400 text-[11px]">Đã nhận diện:</span>
+                    {Object.entries(athletesCountByTeam).map(([tName, count]) => (
+                      <span
+                        key={tName}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-700 dark:text-slate-300 shadow-2xs"
+                      >
+                        <span>{tName}:</span>
+                        <strong className="text-indigo-600 dark:text-indigo-400 font-extrabold">{count}</strong>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
               {/* Filter Toolbar */}
               <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50 dark:bg-slate-950 p-3 rounded-2xl border border-slate-200 dark:border-slate-800">
                 <div className="relative flex-1 min-w-[180px]">
@@ -281,7 +397,7 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
                 </div>
 
                 <div className="flex items-center gap-1.5 text-xs">
-                  <span className="text-slate-500">Đội:</span>
+                  <span className="text-slate-500">Xem lọc đội:</span>
                   <select
                     value={teamFilter}
                     onChange={(e) => setTeamFilter(e.target.value)}
@@ -347,17 +463,41 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
                             {a.name}
                           </td>
                           <td className="p-3">
-                            <select
-                              value={a.teamId}
-                              onChange={(e) => handleTeamChange(a.id, e.target.value)}
-                              className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-semibold"
-                            >
-                              {teams.map((t) => (
-                                <option key={t.id} value={t.id}>
-                                  {t.name} ({t.group})
-                                </option>
-                              ))}
-                            </select>
+                            <div className="space-y-1">
+                              <select
+                                value={a.teamId}
+                                onChange={(e) => handleTeamChange(a.id, e.target.value)}
+                                className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-100"
+                              >
+                                {teams.map((t) => (
+                                  <option key={t.id} value={t.id}>
+                                    {t.name} ({t.group})
+                                  </option>
+                                ))}
+                              </select>
+                              <div className="flex items-center gap-1 text-[10px]">
+                                {a.matchMethod === 'excel_column' && (
+                                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                    ✓ Từ cột: &quot;{a.rawTeamFromExcel}&quot;
+                                  </span>
+                                )}
+                                {a.matchMethod === 'excel_sheet' && (
+                                  <span className="text-sky-600 dark:text-sky-400 font-semibold">
+                                    ✓ Từ Sheet: &quot;{a.rawTeamFromExcel}&quot;
+                                  </span>
+                                )}
+                                {a.matchMethod === 'default_filter' && (
+                                  <span className="text-indigo-600 dark:text-indigo-400 font-semibold">
+                                    ⚡ Theo bộ lọc đã chọn
+                                  </span>
+                                )}
+                                {a.matchMethod === 'manual' && (
+                                  <span className="text-slate-400 font-medium">
+                                    Đã chỉnh tay
+                                  </span>
+                                )}
+                              </div>
+                            </div>
                           </td>
                           <td className="p-3 text-slate-600 dark:text-slate-300">{a.position}</td>
                           <td className="p-3 font-mono text-[11px] text-slate-500">
