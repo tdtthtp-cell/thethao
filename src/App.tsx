@@ -21,7 +21,7 @@ import {
   saveTournamentState,
 } from './services/initialData';
 import { getVenueForGroup, sortGroupsByVenue } from './services/venueService';
-import { initAuth } from './services/firebaseAuth';
+import { logoutGoogle } from './services/firebaseAuth';
 import {
   subscribeToFirestore,
   testFirestoreConnection,
@@ -80,31 +80,19 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [athleteTeamFilter, setAthleteTeamFilter] = useState<string>('ALL');
   const [isDark, setIsDark] = useState<boolean>(false);
-  const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
-    try {
-      const saved = typeof window !== 'undefined' ? localStorage.getItem('sport_tournament_active_user') : null;
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.role) return parsed;
-      }
-    } catch {
-      // fallback
-    }
-    return DEFAULT_GUEST_USER;
-  });
+  // User session state: By default when opening the application, admin is NOT logged in.
+  // Defaults strictly to DEFAULT_GUEST_USER (role: 'viewer', displayName: 'Khách xem', title: 'Chưa đăng nhập').
+  const [currentUser, setCurrentUser] = useState<UserProfile>(DEFAULT_GUEST_USER);
 
   const handleLogin = (profile: UserProfile) => {
     setCurrentUser(profile);
-    try {
-      localStorage.setItem('sport_tournament_active_user', JSON.stringify(profile));
-    } catch {
-      // ignore
-    }
   };
 
   const handleLogout = () => {
     try {
       localStorage.removeItem('sport_tournament_active_user');
+      sessionStorage.removeItem('sport_tournament_active_user');
+      logoutGoogle();
     } catch {
       // ignore
     }
@@ -134,6 +122,14 @@ export default function App() {
 
   // 1. Initial State Load
   useEffect(() => {
+    // Purge any stored active user cache so the app always opens with admin not logged in
+    try {
+      localStorage.removeItem('sport_tournament_active_user');
+      sessionStorage.removeItem('sport_tournament_active_user');
+    } catch {
+      // ignore
+    }
+
     const loaded = loadTournamentState();
     setConfig(loaded.config);
     setSports(loaded.sports);
@@ -148,26 +144,6 @@ export default function App() {
     if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
       setIsDark(true);
     }
-  }, []);
-
-  // Listen for Google Auth state
-  useEffect(() => {
-    const unsub = initAuth((user) => {
-      if (user && user.email) {
-        handleLogin({
-          role: 'admin',
-          username: user.email,
-          displayName: user.displayName || user.email.split('@')[0],
-          title: 'Ban Tổ Chức (Xác thực tài khoản Google)',
-          email: user.email,
-          avatarUrl: user.photoURL || undefined,
-          authProvider: 'google',
-        });
-      }
-    });
-    return () => {
-      if (typeof unsub === 'function') unsub();
-    };
   }, []);
 
   // 2. Realtime Firestore synchronization across all devices
