@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Edit3, AlertCircle, Hash } from 'lucide-react';
+import { X, Edit3, AlertCircle, Hash, Trash2 } from 'lucide-react';
 import { Match, MatchSetScores, MatchStatus, Team, TournamentConfig } from '../types';
 
 interface MatchEditModalProps {
@@ -9,6 +9,7 @@ interface MatchEditModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (updatedMatch: Match) => void;
+  onDelete?: (matchId: string) => void;
 }
 
 export const MatchEditModal: React.FC<MatchEditModalProps> = ({
@@ -18,8 +19,11 @@ export const MatchEditModal: React.FC<MatchEditModalProps> = ({
   isOpen,
   onClose,
   onSave,
+  onDelete,
 }) => {
   if (!isOpen || !match) return null;
+
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const [code, setCode] = useState(match.code);
   const [stage, setStage] = useState(match.stage);
@@ -499,20 +503,57 @@ export const MatchEditModal: React.FC<MatchEditModalProps> = ({
             />
           </div>
 
-          <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl min-h-[44px]"
-            >
-              Hủy
-            </button>
-            <button
-              type="submit"
-              className="px-5 py-2.5 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl transition shadow-xs min-h-[44px]"
-            >
-              Lưu Trận Đấu
-            </button>
+          <div className="pt-2 flex items-center justify-between gap-2 border-t border-slate-100 dark:border-slate-800">
+            {onDelete && !confirmDelete && (
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(true)}
+                className="px-3 py-2 text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+                title="Xóa trận đấu này"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Xóa Trận</span>
+              </button>
+            )}
+
+            {onDelete && confirmDelete && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-rose-600 font-bold">Xóa trận này?</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDelete(match.id);
+                    onClose();
+                  }}
+                  className="px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 rounded-xl transition shadow-xs cursor-pointer"
+                >
+                  Xác nhận
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmDelete(false)}
+                  className="px-2 py-1.5 text-xs text-slate-400 hover:text-slate-600 transition cursor-pointer"
+                >
+                  Hủy
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2.5 text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl min-h-[44px]"
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2.5 text-xs font-bold text-white bg-sky-600 hover:bg-sky-700 rounded-xl transition shadow-xs min-h-[44px]"
+              >
+                Lưu Trận Đấu
+              </button>
+            </div>
           </div>
         </form>
       </div>

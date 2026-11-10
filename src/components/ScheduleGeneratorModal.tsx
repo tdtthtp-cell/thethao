@@ -16,8 +16,12 @@ import {
   Trash2,
   Layers,
   Sparkles,
+  Filter,
+  Check,
 } from 'lucide-react';
-import { Match, StandingItem, Team, TournamentConfig } from '../types';
+import { Match, StandingItem, Team, TournamentConfig, Sport } from '../types';
+import { getVenueForGroup, getVenueInfo, sortGroupsByVenue } from '../services/venueService';
+import { ErrorBoundary } from './ErrorBoundary';
 
 interface ScheduleGeneratorModalProps {
   isOpen: boolean;
@@ -25,20 +29,26 @@ interface ScheduleGeneratorModalProps {
   teams: Team[];
   matches: Match[];
   config: TournamentConfig;
-  standingsByGroup: Record<string, StandingItem[]>;
+  sports?: Sport[];
+  standingsByGroup?: Record<string, StandingItem[]>;
   onApplyMatches: (newMatches: Match[], appendMode: boolean, noticeMsg: string) => void;
 }
 
-export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
+const ScheduleGeneratorModalInner: React.FC<ScheduleGeneratorModalProps> = ({
   isOpen,
   onClose,
-  teams,
-  matches,
+  teams = [],
+  matches = [],
   config,
-  standingsByGroup,
+  sports = [],
+  standingsByGroup = {},
   onApplyMatches,
 }) => {
   const [activeTab, setActiveTab] = useState<'group_stage' | 'knockout_stage'>('group_stage');
+
+  // Sport & Category Filters inside modal
+  const [selectedSportId, setSelectedSportId] = useState<string>(config?.activeSportId || 'ALL');
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string>(config?.activeCategoryId || 'ALL');
 
   // --- TAB 1: GROUP STAGE CONFIG ---
   const [selectedGroup, setSelectedGroup] = useState<string>('ALL');
@@ -49,8 +59,8 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
   );
   const [groupStartTime, setGroupStartTime] = useState<string>('08:00');
   const [groupInterval, setGroupInterval] = useState<number>(45);
-  const [groupPitchOption, setGroupPitchOption] = useState<'single' | 'alternating' | 'custom'>('alternating');
-  const [customPitchName, setCustomPitchName] = useState<string>('Sân 1 (Chính)');
+  const [groupPitchOption, setGroupPitchOption] = useState<'venue_auto' | 'alternating' | 'single' | 'custom'>('venue_auto');
+  const [customPitchName, setCustomPitchName] = useState<string>('Sân 1');
 
   // --- TAB 2: KNOCKOUT / ADVANCED ROUND CONFIG ---
   const [roundPreset, setRoundPreset] = useState<
@@ -58,10 +68,8 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
   >('semi');
   const [customRoundTitle, setCustomRoundTitle] = useState<string>('Bán Kết');
   const [advRule, setAdvRule] = useState<'top1' | 'top2' | 'prev_winners' | 'manual'>('top2');
-  const [prevRoundSource, setPrevRoundSource] = useState<string>('Vòng bảng');
   const [pairingMethod, setPairingMethod] = useState<'cross' | 'random' | 'manual'>('cross');
   const [selectedManualTeamIds, setSelectedManualTeamIds] = useState<string[]>([]);
-  const [manualPairings, setManualPairings] = useState<{ homeId: string; awayId: string }[]>([]);
 
   // Knockout Schedule Settings
   const [koStartDate, setKoStartDate] = useState<string>(
@@ -69,26 +77,75 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
   );
   const [koStartTime, setKoStartTime] = useState<string>('08:00');
   const [koInterval, setKoInterval] = useState<number>(60);
-  const [koPitch, setKoPitch] = useState<string>('Sân 1 (Chính)');
+  const [koPitchOption, setKoPitchOption] = useState<'main' | 'branch' | 'custom'>('main');
+  const [koPitch, setKoPitch] = useState<string>('Sân 1 (Điểm chính)');
 
   if (!isOpen) return null;
 
-  // Filter teams for current active sport and category
+  // Active sport object
+  const safeSports = Array.isArray(sports) ? sports : [];
+  const currentSport = safeSports.find((s) => s.id === selectedSportId);
+  const categoriesList = currentSport?.categories || [];
+
+  // Filter teams for selected sport & category with full null-safety
+  const safeTeams = Array.isArray(teams) ? teams.filter(Boolean) : [];
+  const safeMatches = Array.isArray(matches) ? matches.filter(Boolean) : [];
+  const safeStandings = standingsByGroup || {};
+
   const activeSportTeams = useMemo(() => {
-    return teams.filter((t) => {
-      if (t.sportId && t.sportId !== config.activeSportId) return false;
-      if (config.activeCategoryId && config.activeCategoryId !== 'ALL' && t.categoryId && t.categoryId !== config.activeCategoryId) return false;
+    return safeTeams.filter((t) => {
+      if (!t) return false;
+
+      // 1. Sport filter
+      if (selectedSportId && selectedSportId !== 'ALL') {
+        if (t.sportId && t.sportId !== selectedSportId) return false;
+      }
+
+      // 2. Category filter
+      if (selectedCategoryId && selectedCategoryId !== 'ALL') {
+        if (t.categoryId) {
+          if (t.categoryId !== selectedCategoryId) {
+            const catObj = categoriesList.find((c) => c.id === selectedCategoryId);
+            const catName = (catObj?.name || selectedCategoryId || '').toLowerCase();
+            const groupStr = (t.group || '').toLowerCase();
+            const genderStr = (t.gender || '').toLowerCase();
+            const isMale =
+              (catName.includes('nam') || catName.includes('male')) &&
+              (genderStr === 'male' || groupStr.includes('nam'));
+            const isFemale =
+              (catName.includes('nữ') || catName.includes('nu') || catName.includes('female')) &&
+              (genderStr === 'female' || groupStr.includes('nữ') || groupStr.includes('nu'));
+            if (!isMale && !isFemale) return false;
+          }
+        }
+      }
       return true;
     });
-  }, [teams, config.activeSportId, config.activeCategoryId]);
+  }, [safeTeams, selectedSportId, selectedCategoryId, categoriesList]);
 
-  // Filter teams for Group stage
-  const availableGroups = config.customGroups || [];
+  // Derived available groups: dynamically combining config.customGroups AND all team groups
+  const availableGroups = useMemo(() => {
+    const set = new Set<string>();
+    (config?.customGroups || []).forEach((g) => {
+      if (g && typeof g === 'string' && g.trim()) set.add(g.trim());
+    });
+    activeSportTeams.forEach((t) => {
+      if (t?.group && typeof t.group === 'string' && t.group.trim()) set.add(t.group.trim());
+    });
+    safeTeams.forEach((t) => {
+      if (t?.group && typeof t.group === 'string' && t.group.trim()) set.add(t.group.trim());
+    });
+
+    const list = Array.from(set);
+    return sortGroupsByVenue(list);
+  }, [config?.customGroups, activeSportTeams, safeTeams]);
+
+  // Target groups for group stage
   const targetGroups = selectedGroup === 'ALL' ? availableGroups : [selectedGroup];
 
   // Helper to calculate total teams in selected group
   const teamsInSelection = activeSportTeams.filter(
-    (t) => selectedGroup === 'ALL' || t.group === selectedGroup
+    (t) => selectedGroup === 'ALL' || t?.group === selectedGroup
   );
 
   // --- GENERATE PREVIEWS FOR GROUP STAGE ---
@@ -100,44 +157,56 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
     time: string;
     date: string;
     pitch: string;
+    venueLabel: string;
   }[] = [];
 
-  const startHour = parseInt(groupStartTime.split(':')[0], 10) || 8;
-  const startMinute = parseInt(groupStartTime.split(':')[1], 10) || 0;
+  const timeParts = (groupStartTime || '08:00').split(':');
+  const startHour = parseInt(timeParts[0], 10) || 8;
+  const startMinute = parseInt(timeParts[1], 10) || 0;
   let currentMinuteOffset = startHour * 60 + startMinute;
-  let matchIndex = matches.length + 1;
+  let matchIndex = (groupAppendMode ? safeMatches.length : 0) + 1;
 
   targetGroups.forEach((grp) => {
-    const grpTeams = activeSportTeams.filter((t) => t.group === grp);
+    const grpTeams = activeSportTeams.filter((t) => t?.group === grp);
     if (grpTeams.length < 2) return;
+
+    const venue = getVenueForGroup(grp);
+    const venueLabel = venue === 'branch' ? 'Phân hiệu' : 'Điểm chính';
 
     // Leg 1
     for (let i = 0; i < grpTeams.length; i++) {
       for (let j = i + 1; j < grpTeams.length; j++) {
+        if (!grpTeams[i] || !grpTeams[j]) continue;
+
         const h = Math.floor(currentMinuteOffset / 60);
         const m = currentMinuteOffset % 60;
         const timeStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-        const pitch =
-          groupPitchOption === 'alternating'
-            ? matchIndex % 2 === 1
-              ? 'Sân 1'
-              : 'Sân 2'
-            : groupPitchOption === 'single'
-            ? 'Sân 1'
-            : customPitchName;
+
+        let pitch = '';
+        if (groupPitchOption === 'venue_auto') {
+          const sNum = matchIndex % 2 === 1 ? 'Sân 1' : 'Sân 2';
+          pitch = `${sNum} (${venueLabel})`;
+        } else if (groupPitchOption === 'alternating') {
+          pitch = matchIndex % 2 === 1 ? 'Sân 1' : 'Sân 2';
+        } else if (groupPitchOption === 'single') {
+          pitch = 'Sân 1';
+        } else {
+          pitch = customPitchName || 'Sân 1';
+        }
 
         previewGroupMatches.push({
           home: grpTeams[i],
           away: grpTeams[j],
           group: grp,
           stage: grp,
-          date: groupStartDate,
+          date: groupStartDate || new Date().toISOString().slice(0, 10),
           time: timeStr,
           pitch,
+          venueLabel,
         });
 
         matchIndex++;
-        currentMinuteOffset += groupInterval;
+        currentMinuteOffset += groupInterval || 45;
       }
     }
 
@@ -145,44 +214,49 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
     if (roundRobinLegs === 2) {
       for (let i = 0; i < grpTeams.length; i++) {
         for (let j = i + 1; j < grpTeams.length; j++) {
+          if (!grpTeams[i] || !grpTeams[j]) continue;
+
           const h = Math.floor(currentMinuteOffset / 60);
           const m = currentMinuteOffset % 60;
           const timeStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-          const pitch =
-            groupPitchOption === 'alternating'
-              ? matchIndex % 2 === 1
-                ? 'Sân 1'
-                : 'Sân 2'
-              : groupPitchOption === 'single'
-              ? 'Sân 1'
-              : customPitchName;
+
+          let pitch = '';
+          if (groupPitchOption === 'venue_auto') {
+            const sNum = matchIndex % 2 === 1 ? 'Sân 1' : 'Sân 2';
+            pitch = `${sNum} (${venueLabel})`;
+          } else if (groupPitchOption === 'alternating') {
+            pitch = matchIndex % 2 === 1 ? 'Sân 1' : 'Sân 2';
+          } else if (groupPitchOption === 'single') {
+            pitch = 'Sân 1';
+          } else {
+            pitch = customPitchName || 'Sân 1';
+          }
 
           previewGroupMatches.push({
             home: grpTeams[j], // Inverted home/away
             away: grpTeams[i],
             group: grp,
             stage: grp,
-            date: groupStartDate,
+            date: groupStartDate || new Date().toISOString().slice(0, 10),
             time: timeStr,
             pitch,
+            venueLabel,
           });
 
           matchIndex++;
-          currentMinuteOffset += groupInterval;
+          currentMinuteOffset += groupInterval || 45;
         }
       }
     }
   });
 
   // --- QUALIFIED TEAMS FOR KNOCKOUT STAGE ---
-  // Top 1 from each group
   const top1Teams: { team: Team; group: string; rankText: string }[] = [];
-  // Top 2 from each group
   const top2Teams: { team: Team; group: string; rankText: string }[] = [];
 
   availableGroups.forEach((grp) => {
-    const standings = standingsByGroup[grp] || [];
-    if (standings.length > 0) {
+    const standings = safeStandings[grp] || [];
+    if (standings.length > 0 && standings[0]?.team) {
       top1Teams.push({
         team: standings[0].team,
         group: grp,
@@ -194,7 +268,7 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
         rankText: `Nhất ${grp}`,
       });
     }
-    if (standings.length > 1) {
+    if (standings.length > 1 && standings[1]?.team) {
       top2Teams.push({
         team: standings[1].team,
         group: grp,
@@ -203,40 +277,44 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
     }
   });
 
-  // Previous winners from finished knockout matches
-  const prevFinishedMatches = matches.filter(
-    (m) => m.status === 'FINISHED' || m.scores.set1.home > 0 || m.scores.set1.away > 0
-  );
+  // Previous winners from finished matches (safe check)
+  const prevFinishedMatches = safeMatches.filter((m) => {
+    if (!m) return false;
+    if (m.status === 'FINISHED') return true;
+    if (m.scores?.set1 && (m.scores.set1.home > 0 || m.scores.set1.away > 0)) return true;
+    return false;
+  });
 
   const prevWinners: { team: Team; matchCode: string; rankText: string }[] = [];
   const prevLosers: { team: Team; matchCode: string; rankText: string }[] = [];
 
   prevFinishedMatches.forEach((m) => {
-    // Determine winner based on set scores or penalties
+    if (!m || !m.home || !m.away) return;
     let homeSets = 0;
     let awaySets = 0;
     for (let s = 1; s <= 5; s++) {
-      const sc = m.scores[`set${s}` as keyof typeof m.scores] as { home: number; away: number };
+      const sc = m.scores && (m.scores[`set${s}` as keyof typeof m.scores] as { home: number; away: number });
       if (sc && (sc.home > 0 || sc.away > 0)) {
         if (sc.home > sc.away) homeSets++;
         else if (sc.away > sc.home) awaySets++;
       }
     }
-    if (m.scores.pen.played) {
+    if (m.scores?.pen?.played) {
       if (m.scores.pen.home > m.scores.pen.away) homeSets++;
       else if (m.scores.pen.away > m.scores.pen.home) awaySets++;
     }
 
+    const codeStr = m.code || 'Trận';
     if (homeSets > awaySets) {
-      prevWinners.push({ team: m.home, matchCode: m.code, rankText: `Thắng ${m.code}` });
-      prevLosers.push({ team: m.away, matchCode: m.code, rankText: `Thua ${m.code}` });
+      prevWinners.push({ team: m.home, matchCode: codeStr, rankText: `Thắng ${codeStr}` });
+      prevLosers.push({ team: m.away, matchCode: codeStr, rankText: `Thua ${codeStr}` });
     } else if (awaySets > homeSets) {
-      prevWinners.push({ team: m.away, matchCode: m.code, rankText: `Thắng ${m.code}` });
-      prevLosers.push({ team: m.home, matchCode: m.code, rankText: `Thua ${m.code}` });
+      prevWinners.push({ team: m.away, matchCode: codeStr, rankText: `Thắng ${codeStr}` });
+      prevLosers.push({ team: m.home, matchCode: codeStr, rankText: `Thua ${codeStr}` });
     }
   });
 
-  // Determine which pool of qualified teams to use
+  // Determine qualified pool
   let qualifiedPool: { team: Team; rankText: string }[] = [];
   if (advRule === 'top1') {
     qualifiedPool = top1Teams.map((i) => ({ team: i.team, rankText: i.rankText }));
@@ -245,13 +323,13 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
   } else if (advRule === 'prev_winners') {
     qualifiedPool = prevWinners.map((i) => ({ team: i.team, rankText: i.rankText }));
   } else {
-    // Manual
-    qualifiedPool = teams
-      .filter((t) => selectedManualTeamIds.includes(t.id))
-      .map((t) => ({ team: t, rankText: t.group }));
+    // Manual selection
+    qualifiedPool = activeSportTeams
+      .filter((t) => t && selectedManualTeamIds.includes(t.id))
+      .map((t) => ({ team: t, rankText: t.group || 'Đội' }));
   }
 
-  // Generate Knockout Pairings based on pairingMethod
+  // Generate Knockout Pairings
   const generatedKnockoutPairs: {
     home: Team;
     away: Team;
@@ -270,36 +348,50 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
       ? 'Vòng 2 / Play-off'
       : customRoundTitle || 'Vòng Đấu';
 
+  let didCrossPair = false;
   if (advRule === 'top2' && pairingMethod === 'cross' && availableGroups.length >= 2) {
-    // Cross pairing: Nhất bảng A gặp Nhì bảng B, Nhất bảng B gặp Nhì bảng A, v.v.
     const groupA = availableGroups[0];
     const groupB = availableGroups[1];
-    const standingsA = standingsByGroup[groupA] || [];
-    const standingsB = standingsByGroup[groupB] || [];
+    const standingsA = safeStandings[groupA] || [];
+    const standingsB = safeStandings[groupB] || [];
 
-    if (standingsA.length >= 2 && standingsB.length >= 2) {
+    if (
+      standingsA.length >= 2 &&
+      standingsB.length >= 2 &&
+      standingsA[0]?.team &&
+      standingsB[1]?.team &&
+      standingsB[0]?.team &&
+      standingsA[1]?.team
+    ) {
+      didCrossPair = true;
       generatedKnockoutPairs.push({
         home: standingsA[0].team,
         away: standingsB[1].team,
-        label: `Trận 1: Nhất ${groupA} (${standingsA[0].team.name}) vs Nhì ${groupB} (${standingsB[1].team.name})`,
+        label: `Trận 1: Nhất ${groupA} (${standingsA[0].team.name || ''}) vs Nhì ${groupB} (${standingsB[1].team.name || ''})`,
         stageTitle: roundTitle,
       });
       generatedKnockoutPairs.push({
         home: standingsB[0].team,
         away: standingsA[1].team,
-        label: `Trận 2: Nhất ${groupB} (${standingsB[0].team.name}) vs Nhì ${groupA} (${standingsA[1].team.name})`,
+        label: `Trận 2: Nhất ${groupB} (${standingsB[0].team.name || ''}) vs Nhì ${groupA} (${standingsA[1].team.name || ''})`,
         stageTitle: roundTitle,
       });
     }
 
-    // If 4 groups (A, B, C, D): A vs B, C vs D
     if (availableGroups.length >= 4) {
       const groupC = availableGroups[2];
       const groupD = availableGroups[3];
-      const standingsC = standingsByGroup[groupC] || [];
-      const standingsD = standingsByGroup[groupD] || [];
+      const standingsC = safeStandings[groupC] || [];
+      const standingsD = safeStandings[groupD] || [];
 
-      if (standingsC.length >= 2 && standingsD.length >= 2) {
+      if (
+        standingsC.length >= 2 &&
+        standingsD.length >= 2 &&
+        standingsC[0]?.team &&
+        standingsD[1]?.team &&
+        standingsD[0]?.team &&
+        standingsC[1]?.team
+      ) {
         generatedKnockoutPairs.push({
           home: standingsC[0].team,
           away: standingsD[1].team,
@@ -314,73 +406,83 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
         });
       }
     }
-  } else if (roundPreset === 'final_and_third' && advRule === 'prev_winners' && prevWinners.length >= 2) {
-    // Final
-    generatedKnockoutPairs.push({
-      home: prevWinners[0].team,
-      away: prevWinners[1].team,
-      label: `Chung Kết: ${prevWinners[0].team.name} vs ${prevWinners[1].team.name}`,
-      stageTitle: 'Chung Kết',
-    });
-    // 3rd place match if losers available
-    if (prevLosers.length >= 2) {
-      generatedKnockoutPairs.push({
-        home: prevLosers[0].team,
-        away: prevLosers[1].team,
-        label: `Tranh Hạng Ba: ${prevLosers[0].team.name} vs ${prevLosers[1].team.name}`,
-        stageTitle: 'Tranh Hạng Ba',
-      });
-    }
-  } else {
-    // Default sequential or random pairing
-    const pool = [...qualifiedPool];
-    if (pairingMethod === 'random') {
-      // Random shuffle
-      for (let i = pool.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [pool[i], pool[j]] = [pool[j], pool[i]];
-      }
-    }
+  }
 
-    for (let i = 0; i < pool.length - 1; i += 2) {
-      const homeItem = pool[i];
-      const awayItem = pool[i + 1];
-      const pairNum = Math.floor(i / 2) + 1;
-      generatedKnockoutPairs.push({
-        home: homeItem.team,
-        away: awayItem.team,
-        label: `Cặp ${pairNum}: ${homeItem.team.name} (${homeItem.rankText}) vs ${awayItem.team.name} (${awayItem.rankText})`,
-        stageTitle: roundTitle,
-      });
+  if (!didCrossPair) {
+    if (roundPreset === 'final_and_third' && advRule === 'prev_winners' && prevWinners.length >= 2) {
+      if (prevWinners[0]?.team && prevWinners[1]?.team) {
+        generatedKnockoutPairs.push({
+          home: prevWinners[0].team,
+          away: prevWinners[1].team,
+          label: `Chung Kết: ${prevWinners[0].team.name || ''} vs ${prevWinners[1].team.name || ''}`,
+          stageTitle: 'Chung Kết',
+        });
+      }
+      if (prevLosers.length >= 2 && prevLosers[0]?.team && prevLosers[1]?.team) {
+        generatedKnockoutPairs.push({
+          home: prevLosers[0].team,
+          away: prevLosers[1].team,
+          label: `Tranh Hạng Ba: ${prevLosers[0].team.name || ''} vs ${prevLosers[1].team.name || ''}`,
+          stageTitle: 'Tranh Hạng Ba',
+        });
+      }
+    } else {
+      // Sequential or random pairing from qualifiedPool
+      const pool = [...qualifiedPool].filter((i) => i && i.team);
+      if (pairingMethod === 'random') {
+        for (let i = pool.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+      }
+
+      for (let i = 0; i < pool.length - 1; i += 2) {
+        const homeItem = pool[i];
+        const awayItem = pool[i + 1];
+        if (!homeItem?.team || !awayItem?.team) continue;
+        const pairNum = Math.floor(i / 2) + 1;
+        generatedKnockoutPairs.push({
+          home: homeItem.team,
+          away: awayItem.team,
+          label: `Cặp ${pairNum}: ${homeItem.team.name || ''} (${homeItem.rankText || ''}) vs ${awayItem.team.name || ''} (${awayItem.rankText || ''})`,
+          stageTitle: roundTitle,
+        });
+      }
     }
   }
 
   // --- SUBMISSION HANDLERS ---
   const handleApplyGroupSchedule = () => {
     if (previewGroupMatches.length === 0) {
-      alert('Không có đủ đội trong bảng/khối để tạo lịch! Cần tối thiểu 2 đội.');
+      alert('Không có đủ đội trong bảng/khối để tạo lịch! Cần tối thiểu 2 đội trong cùng một bảng.');
       return;
     }
 
-    const startHr = parseInt(groupStartTime.split(':')[0], 10) || 8;
-    const startMin = parseInt(groupStartTime.split(':')[1], 10) || 0;
+    const tParts = (groupStartTime || '08:00').split(':');
+    const startHr = parseInt(tParts[0], 10) || 8;
+    const startMin = parseInt(tParts[1], 10) || 0;
     let minOffset = startHr * 60 + startMin;
-    let seq = (groupAppendMode ? matches.length : 0) + 1;
+    let seq = (groupAppendMode ? safeMatches.length : 0) + 1;
 
     const newMatches: Match[] = previewGroupMatches.map((item, idx) => {
       const h = Math.floor(minOffset / 60);
       const m = minOffset % 60;
       const timeStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-      minOffset += groupInterval;
+      minOffset += groupInterval || 45;
 
       return {
         id: 'M_' + Date.now() + '_' + (seq + idx),
-        sportId: config.activeSportId,
-        categoryId: config.activeCategoryId && config.activeCategoryId !== 'ALL' ? config.activeCategoryId : undefined,
+        sportId: selectedSportId !== 'ALL' ? selectedSportId : config?.activeSportId,
+        categoryId:
+          selectedCategoryId !== 'ALL'
+            ? selectedCategoryId
+            : config?.activeCategoryId && config.activeCategoryId !== 'ALL'
+            ? config.activeCategoryId
+            : undefined,
         code: `Trận ${(seq + idx).toString().padStart(2, '0')}`,
         stage: item.stage,
         pitch: item.pitch,
-        date: groupStartDate,
+        date: groupStartDate || new Date().toISOString().slice(0, 10),
         time: timeStr,
         home: item.home,
         away: item.away,
@@ -395,9 +497,9 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
           pen: { home: 0, away: 0, played: false },
         },
         events: [],
-        refereeName: config.referee,
-        secretaryName: config.secretary,
-        notes: `Vòng bảng ${item.group} (${roundRobinLegs === 1 ? '1 lượt' : 'Lượt về'})`,
+        refereeName: config?.referee,
+        secretaryName: config?.secretary,
+        notes: `Vòng bảng ${item.group} (${item.venueLabel}) - ${roundRobinLegs === 1 ? '1 lượt' : 'Lượt về'}`,
       };
     });
 
@@ -411,23 +513,27 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
   const handleApplyKnockoutSchedule = () => {
     if (generatedKnockoutPairs.length === 0) {
       alert(
-        'Chưa có đủ cặp đấu để tạo vòng này! Vui lòng kiểm tra lại điều lệ chọn đội hoặc chọn đủ các đội.'
+        'Chưa có đủ cặp đấu để tạo vòng này! Vui lòng chọn ít nhất 2 đội hoặc chọn tab "Tự Chọn Đội".'
       );
       return;
     }
 
-    const startHr = parseInt(koStartTime.split(':')[0], 10) || 8;
-    const startMin = parseInt(koStartTime.split(':')[1], 10) || 0;
+    const tParts = (koStartTime || '08:00').split(':');
+    const startHr = parseInt(tParts[0], 10) || 8;
+    const startMin = parseInt(tParts[1], 10) || 0;
     let minOffset = startHr * 60 + startMin;
-    let seq = matches.length + 1;
+    let seq = safeMatches.length + 1;
+
+    let targetPitch = koPitch || 'Sân 1';
+    if (koPitchOption === 'main') targetPitch = 'Sân 1 (Điểm chính)';
+    else if (koPitchOption === 'branch') targetPitch = 'Sân 1 (Phân hiệu)';
 
     const newMatches: Match[] = generatedKnockoutPairs.map((pair, idx) => {
       const h = Math.floor(minOffset / 60);
       const m = minOffset % 60;
       const timeStr = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-      minOffset += koInterval;
+      minOffset += koInterval || 60;
 
-      // Match code prefix
       let prefix = 'Trận';
       if (pair.stageTitle.includes('Bán Kết')) prefix = `BK ${idx + 1}`;
       else if (pair.stageTitle.includes('Tứ Kết')) prefix = `TK ${idx + 1}`;
@@ -437,12 +543,17 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
 
       return {
         id: 'M_KO_' + Date.now() + '_' + (seq + idx),
-        sportId: config.activeSportId,
-        categoryId: config.activeCategoryId && config.activeCategoryId !== 'ALL' ? config.activeCategoryId : undefined,
+        sportId: selectedSportId !== 'ALL' ? selectedSportId : config?.activeSportId,
+        categoryId:
+          selectedCategoryId !== 'ALL'
+            ? selectedCategoryId
+            : config?.activeCategoryId && config.activeCategoryId !== 'ALL'
+            ? config.activeCategoryId
+            : undefined,
         code: prefix,
         stage: pair.stageTitle,
-        pitch: koPitch,
-        date: koStartDate,
+        pitch: targetPitch,
+        date: koStartDate || new Date().toISOString().slice(0, 10),
         time: timeStr,
         home: pair.home,
         away: pair.away,
@@ -457,21 +568,32 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
           pen: { home: 0, away: 0, played: false },
         },
         events: [],
-        refereeName: config.referee,
-        secretaryName: config.secretary,
+        refereeName: config?.referee,
+        secretaryName: config?.secretary,
         notes: `${pair.stageTitle}: ${pair.label}`,
       };
     });
 
     const notice = `Đã tạo ${newMatches.length} trận đấu cho vòng ${roundTitle} thành công!`;
-    onApplyMatches(newMatches, true, notice); // Always append knockout rounds
+    onApplyMatches(newMatches, true, notice);
     onClose();
   };
 
+  const handleToggleManualTeam = (teamId: string) => {
+    setSelectedManualTeamIds((prev) =>
+      prev.includes(teamId) ? prev.filter((id) => id !== teamId) : [...prev, teamId]
+    );
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto">
+    <div
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-3 sm:p-4 overflow-y-auto"
+    >
       <div className="w-full max-w-3xl bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-6 max-h-[92vh] flex flex-col">
-        {/* Modal Top Header */}
+        {/* Modal Header */}
         <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-sky-500 to-indigo-600 flex items-center justify-center text-white shadow-sm">
@@ -481,21 +603,68 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
               <h3 className="font-extrabold text-base sm:text-lg text-slate-900 dark:text-white flex items-center gap-2">
                 <span>Tạo Lịch Thi Đấu Tự Động & Phân Nhánh Vòng Đấu</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 font-bold">
-                  Bản Mới 2026
+                  2 Địa Điểm (Điểm Chính / Phân Hiệu)
                 </span>
               </h3>
               <p className="text-xs text-slate-400">
-                Xếp lịch theo bảng (Group/Khối) và tạo các vòng sau (Tứ kết, Bán kết, Chung kết) theo điều lệ chọn 1 hoặc 2 đội
+                Tự động xếp vòng tròn theo bảng/khối và tạo các vòng Tứ kết, Bán kết, Chung kết
               </p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
+        </div>
+
+        {/* Global Sport & Category Scope Selector */}
+        <div className="px-5 py-2.5 bg-sky-50/60 dark:bg-sky-950/30 border-b border-sky-100 dark:border-sky-900/40 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <Filter className="w-3.5 h-3.5 text-sky-600" />
+            <span className="font-bold text-slate-700 dark:text-slate-300">Phạm vi áp dụng:</span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {safeSports.length > 0 && (
+              <select
+                value={selectedSportId}
+                onChange={(e) => {
+                  setSelectedSportId(e.target.value);
+                  setSelectedCategoryId('ALL');
+                }}
+                className="px-2.5 py-1 text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none cursor-pointer"
+              >
+                <option value="ALL">👉 Tất cả các môn</option>
+                {safeSports.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            {categoriesList.length > 0 && selectedSportId !== 'ALL' && (
+              <select
+                value={selectedCategoryId}
+                onChange={(e) => setSelectedCategoryId(e.target.value)}
+                className="px-2.5 py-1 text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none cursor-pointer"
+              >
+                <option value="ALL">👉 Tất cả nội dung ({currentSport?.name})</option>
+                {categoriesList.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    Nội dung: {c.name}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <span className="px-2 py-0.5 rounded-md bg-white dark:bg-slate-900 font-bold text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800">
+              {activeSportTeams.length} đội khả dụng
+            </span>
+          </div>
         </div>
 
         {/* Tab Switcher */}
@@ -539,7 +708,7 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
                     <span>Chọn Bảng / Khối Cần Xếp Lịch</span>
                   </label>
                   <span className="text-xs text-slate-400">
-                    Đã nhập: <strong className="text-sky-600 dark:text-sky-400">{teamsInSelection.length} đội</strong>
+                    Tổng số: <strong className="text-sky-600 dark:text-sky-400">{teamsInSelection.length} đội</strong> ({availableGroups.length} bảng)
                   </span>
                 </div>
 
@@ -553,12 +722,17 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
                       onChange={(e) => setSelectedGroup(e.target.value)}
                       className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-sky-500 font-medium"
                     >
-                      <option value="ALL">👉 Tất cả các bảng ({availableGroups.join(', ')})</option>
-                      {availableGroups.map((g) => (
-                        <option key={g} value={g}>
-                          Chỉ xếp lịch cho bảng: {g} ({teams.filter((t) => t.group === g).length} đội)
-                        </option>
-                      ))}
+                      <option value="ALL">👉 Tất cả các bảng ({availableGroups.length} bảng)</option>
+                      {availableGroups.map((g) => {
+                        const count = activeSportTeams.filter((t) => t?.group === g).length;
+                        const venue = getVenueForGroup(g);
+                        const venueTag = venue === 'branch' ? 'Phân hiệu' : 'Điểm chính';
+                        return (
+                          <option key={g} value={g}>
+                            Bảng: {g} ({count} đội) · [{venueTag}]
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
 
@@ -577,8 +751,8 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
                   </div>
                 </div>
 
-                {/* Append or Replace */}
-                <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center gap-3">
+                {/* Append or Replace Mode */}
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
                   <label className="flex items-center gap-2 text-xs cursor-pointer select-none">
                     <input
                       type="checkbox"
@@ -587,7 +761,7 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
                       className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500"
                     />
                     <span className="font-semibold text-slate-700 dark:text-slate-300">
-                      Tạo nối tiếp vào lịch hiện tại (Không làm mất các trận đã xếp trước đó)
+                      Tạo nối tiếp vào lịch hiện tại (Không xóa các trận đã có)
                     </span>
                   </label>
                 </div>
@@ -645,8 +819,9 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
                   <select
                     value={groupPitchOption}
                     onChange={(e) => setGroupPitchOption(e.target.value as any)}
-                    className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
+                    className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl outline-none font-semibold text-sky-600 dark:text-sky-400"
                   >
+                    <option value="venue_auto">📍 Theo 2 Địa Điểm (Khuyên dùng)</option>
                     <option value="alternating">Luân phiên Sân 1 & 2</option>
                     <option value="single">Chỉ 1 Sân (Sân 1)</option>
                     <option value="custom">Sân tùy chỉnh...</option>
@@ -672,15 +847,24 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
                   </span>
                   <span className="text-slate-400 font-normal">
                     {teamsInSelection.length < 2 && (
-                      <span className="text-rose-500 font-bold">Cần tối thiểu 2 đội để xếp lịch</span>
+                      <span className="text-rose-500 font-bold">Cần tối thiểu 2 đội trong cùng một bảng</span>
                     )}
                   </span>
                 </div>
 
-                <div className="max-h-56 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-2xl divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
+                <div className="max-h-60 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-2xl divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
                   {previewGroupMatches.length === 0 ? (
-                    <div className="p-8 text-center text-xs text-slate-400">
-                      Chưa có đủ đội bóng trong bảng này để tạo cặp đấu. Ban tổ chức vui lòng nhập danh sách đội tại tab "Đăng Ký VĐV / Đội" trước!
+                    <div className="p-8 text-center text-xs text-slate-400 space-y-2">
+                      <p>Chưa tạo được trận đấu nào cho các thiết lập hiện tại.</p>
+                      {activeSportTeams.length === 0 ? (
+                        <p className="text-amber-600 dark:text-amber-400 font-medium">
+                          Gợi ý: Hãy chọn "👉 Tất cả các môn" ở thanh lọc trên cùng nếu danh sách đội chưa được gán môn thi đấu cụ thể!
+                        </p>
+                      ) : (
+                        <p className="text-slate-500">
+                          Đã tìm thấy {activeSportTeams.length} đội bóng trong {availableGroups.length} bảng. Hãy đảm bảo mỗi bảng có ít nhất 2 đội để tạo cặp đấu vòng tròn!
+                        </p>
+                      )}
                     </div>
                   ) : (
                     previewGroupMatches.map((p, idx) => (
@@ -694,11 +878,11 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
                           </span>
                           <div>
                             <span className="font-bold text-slate-800 dark:text-slate-200">
-                              {p.home.name}
+                              {p.home?.name || 'Đội 1'}
                             </span>{' '}
                             <span className="text-slate-400 font-normal">vs</span>{' '}
                             <span className="font-bold text-slate-800 dark:text-slate-200">
-                              {p.away.name}
+                              {p.away?.name || 'Đội 2'}
                             </span>
                             <span className="ml-2 text-[10px] text-slate-400 font-semibold">
                               ({p.stage})
@@ -722,7 +906,7 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition"
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
                 >
                   Hủy Bỏ
                 </button>
@@ -785,7 +969,7 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button
                     type="button"
                     onClick={() => setAdvRule('top2')}
@@ -796,13 +980,13 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
                     }`}
                   >
                     <div className="font-bold flex items-center gap-1.5">
-                      <span>Chọn 2 Đội/Bảng</span>
+                      <span>Top 2 Mỗi Bảng</span>
                       <span className="px-1.5 py-0.2 rounded text-[9px] bg-indigo-200 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200">
-                        Top 2
+                        BXH
                       </span>
                     </div>
                     <div className="text-[10px] text-slate-400 mt-1">
-                      Lấy đội Nhất & Nhì của từng bảng dựa theo Bảng xếp hạng
+                      Nhất & Nhì theo Bảng Xếp Hạng
                     </div>
                   </button>
 
@@ -816,13 +1000,13 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
                     }`}
                   >
                     <div className="font-bold flex items-center gap-1.5">
-                      <span>Chọn 1 Đội/Bảng</span>
+                      <span>Top 1 Mỗi Bảng</span>
                       <span className="px-1.5 py-0.2 rounded text-[9px] bg-amber-200 dark:bg-amber-900 text-amber-800 dark:text-amber-200">
-                        Top 1
+                        Nhất
                       </span>
                     </div>
                     <div className="text-[10px] text-slate-400 mt-1">
-                      Chỉ lấy đội Nhất bảng của từng bảng vào thẳng Bán kết/Chung kết
+                      Chỉ lấy đội Nhất các bảng
                     </div>
                   </button>
 
@@ -835,37 +1019,102 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
                         : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300'
                     }`}
                   >
-                    <div className="font-bold">Đội Thắng Vòng Trước</div>
+                    <div className="font-bold">Đội Thắng Trước</div>
                     <div className="text-[10px] text-slate-400 mt-1">
-                      Thắng Tứ kết vào Bán kết; Thắng Bán kết vào Chung kết ({prevWinners.length} đội đã thắng)
+                      Thắng TK vào BK, thắng BK vào CK ({prevWinners.length} đội)
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAdvRule('manual')}
+                    className={`p-3 text-left rounded-xl border text-xs transition cursor-pointer ${
+                      advRule === 'manual'
+                        ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-200 font-bold'
+                        : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    <div className="font-bold">Tự Chọn Đội</div>
+                    <div className="text-[10px] text-slate-400 mt-1">
+                      Tự chọn đội bóng tham gia vòng này ({selectedManualTeamIds.length} đội đã chọn)
                     </div>
                   </button>
                 </div>
 
+                {/* Manual Team Selector if advRule === 'manual' */}
+                {advRule === 'manual' && (
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between text-xs font-semibold text-slate-600 dark:text-slate-400">
+                      <span>Tích chọn các đội vào vòng đấu này:</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedManualTeamIds([])}
+                        className="text-xs text-rose-500 hover:underline"
+                      >
+                        Bỏ chọn tất cả
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+                      {activeSportTeams.map((t) => {
+                        if (!t) return null;
+                        const isSelected = selectedManualTeamIds.includes(t.id);
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => handleToggleManualTeam(t.id)}
+                            className={`p-2 rounded-lg border text-xs text-left flex items-center justify-between transition cursor-pointer ${
+                              isSelected
+                                ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-200 font-bold'
+                                : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 text-slate-700 dark:text-slate-300'
+                            }`}
+                          >
+                            <span className="truncate">{t.name || 'Đội'}</span>
+                            <span className="text-[10px] text-slate-400 ml-1 shrink-0">
+                              {isSelected ? <Check className="w-3.5 h-3.5 text-indigo-600" /> : t.group || ''}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 {/* Qualified Teams Display */}
-                <div className="pt-2">
-                  <div className="text-[11px] font-semibold text-slate-500 mb-1.5">
-                    Danh sách các đội được xét duyệt vào vòng:
-                  </div>
-                  <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
-                    {qualifiedPool.length === 0 ? (
-                      <span className="text-slate-400 text-xs italic">
-                        Chưa có đội nào đạt điều kiện. Vui lòng cập nhật tỉ số các trận vòng bảng để hệ thống xác định đội Nhất/Nhì!
-                      </span>
-                    ) : (
-                      qualifiedPool.map((q, idx) => (
-                        <span
-                          key={idx}
-                          className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-300 rounded-lg flex items-center gap-1.5"
+                {advRule !== 'manual' && (
+                  <div className="pt-2">
+                    <div className="text-[11px] font-semibold text-slate-500 mb-1.5 flex items-center justify-between">
+                      <span>Danh sách các đội được xét duyệt vào vòng:</span>
+                      {qualifiedPool.length === 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setAdvRule('manual')}
+                          className="text-indigo-600 hover:underline text-[11px] font-bold"
                         >
-                          <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                          <strong>{q.team.name}</strong>
-                          <span className="text-[10px] text-slate-400 font-normal">({q.rankText})</span>
+                          👉 Bấm để Tự Chọn Đội ngay
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800">
+                      {qualifiedPool.length === 0 ? (
+                        <span className="text-slate-400 text-xs italic">
+                          Chưa có kết quả bảng xếp hạng hoàn chỉnh. Bạn có thể bấm nút "Tự Chọn Đội" ở trên để chọn các đội vào Bán kết/Chung kết ngay mà không cần đợi vòng bảng!
                         </span>
-                      ))
-                    )}
+                      ) : (
+                        qualifiedPool.map((q, idx) => (
+                          <span
+                            key={idx}
+                            className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-300 rounded-lg flex items-center gap-1.5"
+                          >
+                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                            <strong>{q.team?.name || 'Đội'}</strong>
+                            <span className="text-[10px] text-slate-400 font-normal">({q.rankText})</span>
+                          </span>
+                        ))
+                      )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Step 3: Pairing Scheme */}
@@ -947,13 +1196,24 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
                   <label className="block text-[11px] font-bold uppercase text-slate-500 mb-1">
                     Sân Thi Đấu
                   </label>
-                  <input
-                    type="text"
-                    value={koPitch}
-                    onChange={(e) => setKoPitch(e.target.value)}
-                    placeholder="Sân 1..."
+                  <select
+                    value={koPitchOption}
+                    onChange={(e) => setKoPitchOption(e.target.value as any)}
                     className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
-                  />
+                  >
+                    <option value="main">📍 Điểm chính - Sân 1</option>
+                    <option value="branch">🏫 Phân hiệu - Sân 1</option>
+                    <option value="custom">Sân tự nhập...</option>
+                  </select>
+                  {koPitchOption === 'custom' && (
+                    <input
+                      type="text"
+                      value={koPitch}
+                      onChange={(e) => setKoPitch(e.target.value)}
+                      placeholder="Tên sân..."
+                      className="mt-1.5 w-full px-2 py-1 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
+                    />
+                  )}
                 </div>
               </div>
 
@@ -969,7 +1229,7 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
                 <div className="border border-slate-200 dark:border-slate-800 rounded-2xl divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900">
                   {generatedKnockoutPairs.length === 0 ? (
                     <div className="p-8 text-center text-xs text-slate-400">
-                      Chưa đủ thông tin để ghép cặp vòng này. Vui lòng chọn điều lệ phù hợp hoặc bổ sung đội!
+                      Chưa đủ thông tin để ghép cặp vòng này. Vui lòng chọn điều lệ phù hợp hoặc chọn tab "Tự Chọn Đội" để bổ sung đội!
                     </div>
                   ) : (
                     generatedKnockoutPairs.map((pair, idx) => (
@@ -983,9 +1243,9 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
                           </span>
                           <div>
                             <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                              <span>{pair.home.name}</span>
+                              <span>{pair.home?.name || 'Đội 1'}</span>
                               <span className="text-slate-400 font-normal">vs</span>
-                              <span>{pair.away.name}</span>
+                              <span>{pair.away?.name || 'Đội 2'}</span>
                             </div>
                             <div className="text-[10px] text-slate-400 mt-0.5">{pair.label}</div>
                           </div>
@@ -1007,7 +1267,7 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
                 <button
                   type="button"
                   onClick={onClose}
-                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition"
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
                 >
                   Hủy Bỏ
                 </button>
@@ -1028,5 +1288,15 @@ export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = ({
         </div>
       </div>
     </div>
+  );
+};
+
+export const ScheduleGeneratorModal: React.FC<ScheduleGeneratorModalProps> = (props) => {
+  if (!props.isOpen) return null;
+
+  return (
+    <ErrorBoundary fallbackTitle="Không thể mở popup xếp lịch thi đấu" onReset={props.onClose}>
+      <ScheduleGeneratorModalInner {...props} />
+    </ErrorBoundary>
   );
 };

@@ -62,6 +62,7 @@ import { TabMatches } from './components/TabMatches';
 import { TabStandings } from './components/TabStandings';
 import { TabReports } from './components/TabReports';
 import { TabSettings } from './components/TabSettings';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 export default function App() {
   const [initialLoaded, setInitialLoaded] = useState(false);
@@ -450,13 +451,29 @@ export default function App() {
         return;
       }
 
+      // Collect all groups from both config.customGroups AND all effectiveTeams
+      const groupSet = new Set<string>();
+      (config.customGroups || []).forEach((g) => {
+        if (g && g.trim()) groupSet.add(g.trim());
+      });
+      effectiveTeams.forEach((t) => {
+        if (t.group && t.group.trim()) groupSet.add(t.group.trim());
+      });
+      const allDiscoveredGroups = Array.from(groupSet);
+      const sortedGroups = sortGroupsByVenue(allDiscoveredGroups);
+
+      // If new groups discovered, also persist to config
+      const newlyDiscovered = allDiscoveredGroups.filter((g) => !(config.customGroups || []).includes(g));
+      if (newlyDiscovered.length > 0) {
+        const updatedConfig = { ...config, customGroups: allDiscoveredGroups };
+        setConfig(updatedConfig);
+        syncConfigToFirestore(updatedConfig);
+      }
+
       const newGeneratedMatches: Match[] = [];
       let matchCount = 1;
       const baseDate = startDate || new Date().toISOString().slice(0, 10);
       let minuteOffset = startHour * 60;
-
-      // Sort groups by venue first: Điểm chính (K10, K11, K12) first, then Phân hiệu
-      const sortedGroups = sortGroupsByVenue(config.customGroups);
 
       sortedGroups.forEach((grp) => {
         const grpTeams = effectiveTeams.filter((t) => t.group === grp);
@@ -473,6 +490,8 @@ export default function App() {
 
             newGeneratedMatches.push({
               id: 'M_' + Date.now() + '_' + matchCount,
+              sportId: config.activeSportId,
+              categoryId: config.activeCategoryId && config.activeCategoryId !== 'ALL' ? config.activeCategoryId : undefined,
               code: `Trận ${matchCount.toString().padStart(2, '0')}`,
               stage: grp,
               pitch: matchCount % 2 === 1 ? `Sân 1 (${venueLabel})` : `Sân 2 (${venueLabel})`,
@@ -502,6 +521,13 @@ export default function App() {
         }
       });
 
+      if (newGeneratedMatches.length === 0) {
+        alert(
+          `Không tìm thấy bảng/khối nào có từ 2 đội trở lên để xếp lịch vòng tròn (Tổng số đội: ${effectiveTeams.length}). Vui lòng kiểm tra lại cột Bảng/Khối của các đội!`
+        );
+        return;
+      }
+
       setMatches(newGeneratedMatches);
       syncAllMatchesToFirestore(newGeneratedMatches);
       effectiveTeams.forEach((t) => syncTeamToFirestore(t));
@@ -521,9 +547,29 @@ export default function App() {
     } else {
       finalMatches = newGeneratedMatches;
     }
+
+    // Auto discover new groups and sync to config
+    const matchGroups = newGeneratedMatches.map((m) => m.stage).filter(Boolean);
+    const newGroups = matchGroups.filter((g) => !(config.customGroups || []).includes(g));
+    if (newGroups.length > 0) {
+      const updatedConfig = {
+        ...config,
+        customGroups: Array.from(new Set([...config.customGroups, ...newGroups])),
+      };
+      setConfig(updatedConfig);
+      syncConfigToFirestore(updatedConfig);
+    }
+
     setMatches(finalMatches);
     syncAllMatchesToFirestore(finalMatches);
     broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: finalMatches });
+    playScoreChime();
+  };
+
+  const handleReorderMatches = (reorderedMatches: Match[], noticeMsg?: string) => {
+    setMatches(reorderedMatches);
+    syncAllMatchesToFirestore(reorderedMatches);
+    broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: reorderedMatches });
     playScoreChime();
   };
 
@@ -542,13 +588,17 @@ export default function App() {
     broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: [...matches, newM] });
   };
 
-  const handleDeleteMatch = (matchId: string) => {
-    if (!confirm('Bạn có chắc chắn muốn xóa trận đấu này?')) return;
-    setMatches((prev) => prev.filter((m) => m.id !== matchId));
-    deleteMatchFromFirestore(matchId);
-    broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', {
-      matches: matches.filter((m) => m.id !== matchId),
+  const handleDeleteMatch = async (matchId: string) => {
+    setMatches((prev) => {
+      const next = prev.filter((m) => m.id !== matchId);
+      broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: next });
+      return next;
     });
+    try {
+      await deleteMatchFromFirestore(matchId);
+    } catch (err) {
+      console.error('Error deleting match from Firestore:', err);
+    }
   };
 
   // Handlers for Athletes & Teams
@@ -979,28 +1029,31 @@ export default function App() {
         )}
 
         {activeTab === 'matches' && (
-          <TabMatches
-            matches={matches}
-            teams={teams}
-            sports={sports}
-            config={config}
-            user={currentUser}
-            standingsByGroup={standingsByGroup}
-            onNavigateTab={setActiveTab}
-            onUpdateMatch={handleUpdateMatch}
-            onAddMatch={handleAddMatch}
-            onDeleteMatch={handleDeleteMatch}
-            onGenerateSchedule={handleGenerateSchedule}
-            onApplyMatchesBatch={handleApplyMatchesBatch}
-            onOpenMinutes={(m) => {
-              setSelectedMinutesMatch(m);
-              setIsMinutesModalOpen(true);
-            }}
-            onOpenEditMatch={(m) => {
-              setEditingMatch(m);
-              setIsMatchEditModalOpen(true);
-            }}
-          />
+          <ErrorBoundary fallbackTitle="Đã xảy ra lỗi khi tải Lịch thi đấu" onReset={() => setActiveTab('matches')}>
+            <TabMatches
+              matches={matches}
+              teams={teams}
+              sports={sports}
+              config={config}
+              user={currentUser}
+              standingsByGroup={standingsByGroup}
+              onNavigateTab={setActiveTab}
+              onUpdateMatch={handleUpdateMatch}
+              onAddMatch={handleAddMatch}
+              onDeleteMatch={handleDeleteMatch}
+              onGenerateSchedule={handleGenerateSchedule}
+              onApplyMatchesBatch={handleApplyMatchesBatch}
+              onReorderMatches={handleReorderMatches}
+              onOpenMinutes={(m) => {
+                setSelectedMinutesMatch(m);
+                setIsMinutesModalOpen(true);
+              }}
+              onOpenEditMatch={(m) => {
+                setEditingMatch(m);
+                setIsMatchEditModalOpen(true);
+              }}
+            />
+          </ErrorBoundary>
         )}
 
         {activeTab === 'standings' && (
@@ -1132,6 +1185,7 @@ export default function App() {
         isOpen={isMatchEditModalOpen}
         onClose={() => setIsMatchEditModalOpen(false)}
         onSave={handleUpdateMatch}
+        onDelete={handleDeleteMatch}
       />
 
       {/* 6. Administrative Match Minutes Modal */}
