@@ -73,6 +73,9 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
     matches.find((m) => m.status === 'LIVE')?.id || null
   );
   const [quickScoreMatch, setQuickScoreMatch] = useState<Match | null>(null);
+  const [isScheduleGeneratorModalOpen, setIsScheduleGeneratorModalOpen] = useState(false);
+  const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
+  const [matchToDelete, setMatchToDelete] = useState<Match | null>(null);
 
   const allAvailableGroups = useMemo(() => {
     const set = new Set<string>();
@@ -294,10 +297,6 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
       'score'
     );
   };
-
-  const [isScheduleGeneratorModalOpen, setIsScheduleGeneratorModalOpen] = useState(false);
-  const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
-  const [matchToDelete, setMatchToDelete] = useState<Match | null>(null);
 
   const handleQuickShiftMatch = (matchId: string, direction: -1 | 1) => {
     const idx = matches.findIndex((m) => m.id === matchId);

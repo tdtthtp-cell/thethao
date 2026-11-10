@@ -678,6 +678,52 @@ export default function App() {
   const handleImportMultipleAthletes = (incomingAthletes: Athlete[]) => {
     if (incomingAthletes.length === 0) return;
 
+    // 1. Identify any new teams or groups present in the incoming athletes
+    const existingTeamNames = new Set(teams.map((t) => t.name.toLowerCase()));
+    const existingTeamIds = new Set(teams.map((t) => t.id));
+    const newTeamsToCreate: Team[] = [];
+    const discoveredGroups = new Set<string>();
+
+    incomingAthletes.forEach((ath) => {
+      const tName = ath.teamName?.trim();
+      if (tName && !existingTeamNames.has(tName.toLowerCase()) && !existingTeamIds.has(ath.teamId)) {
+        existingTeamNames.add(tName.toLowerCase());
+        existingTeamIds.add(ath.teamId);
+
+        let group = ath.group || 'Khối 10';
+        if (!group) {
+          const gMatch = tName.match(/^(10|11|12)/);
+          group = gMatch ? `Khối ${gMatch[1]}` : 'Khối 10';
+        }
+        discoveredGroups.add(group);
+
+        newTeamsToCreate.push({
+          id: ath.teamId || `T_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          name: tName,
+          group,
+          gender: group.toLowerCase().includes('nữ') ? 'female' : 'male',
+          color: group.toLowerCase().includes('nữ') ? '#e11d48' : '#0284c7',
+          coachName: 'Giáo viên phụ trách',
+          contactPhone: '',
+        });
+      }
+    });
+
+    if (newTeamsToCreate.length > 0) {
+      setTeams((prev) => [...prev, ...newTeamsToCreate]);
+      syncMultipleTeamsToFirestore(newTeamsToCreate);
+      broadcastTournamentUpdate('TEAMS_UPDATED', { importedCount: newTeamsToCreate.length });
+
+      // Update groups in config if new groups found
+      const newGroups = Array.from(discoveredGroups).filter((g) => !config.customGroups.includes(g));
+      if (newGroups.length > 0) {
+        const updatedConfig = { ...config, customGroups: [...config.customGroups, ...newGroups] };
+        setConfig(updatedConfig);
+        syncConfigToFirestore(updatedConfig);
+      }
+    }
+
+    // 2. Save and sync athletes
     setAthletes((prev) => {
       const existingMap = new Map(prev.map((a) => [a.id, a]));
       incomingAthletes.forEach((a) => existingMap.set(a.id, a));
@@ -691,7 +737,9 @@ export default function App() {
       id: 'N_' + Date.now(),
       type: 'system',
       title: 'Nhập danh sách VĐV từ Excel thành công',
-      message: `Đã nhập thành công ${incomingAthletes.length} vận động viên vào các đội.`,
+      message: `Đã nhập thành công ${incomingAthletes.length} vận động viên vào các đội${
+        newTeamsToCreate.length > 0 ? ` (tự động tạo ${newTeamsToCreate.length} đội mới)` : ''
+      }.`,
       timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
       read: false,
     };

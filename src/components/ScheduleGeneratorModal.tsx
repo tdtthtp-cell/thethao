@@ -80,8 +80,6 @@ const ScheduleGeneratorModalInner: React.FC<ScheduleGeneratorModalProps> = ({
   const [koPitchOption, setKoPitchOption] = useState<'main' | 'branch' | 'custom'>('main');
   const [koPitch, setKoPitch] = useState<string>('Sân 1 (Điểm chính)');
 
-  if (!isOpen) return null;
-
   // Active sport object
   const safeSports = Array.isArray(sports) ? sports : [];
   const currentSport = safeSports.find((s) => s.id === selectedSportId);
@@ -584,6 +582,8 @@ const ScheduleGeneratorModalInner: React.FC<ScheduleGeneratorModalProps> = ({
       prev.includes(teamId) ? prev.filter((id) => id !== teamId) : [...prev, teamId]
     );
   };
+
+  if (!isOpen) return null;
 
   return (
     <div

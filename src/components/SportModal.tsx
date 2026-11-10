@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Trophy } from 'lucide-react';
 import { Sport, SportCategory } from '../types';
 
@@ -15,8 +15,6 @@ export const SportModal: React.FC<SportModalProps> = ({
   onClose,
   onSave,
 }) => {
-  if (!isOpen) return null;
-
   const [name, setName] = useState(sport?.name || '');
   const [maxSets, setMaxSets] = useState<number>(sport?.maxSets || 3);
   const [pointScheme, setPointScheme] = useState<Sport['pointScheme']>(sport?.pointScheme || 'standard');
@@ -31,6 +29,25 @@ export const SportModal: React.FC<SportModalProps> = ({
     ]
   );
   const [newCatName, setNewCatName] = useState('');
+
+  useEffect(() => {
+    if (isOpen) {
+      setName(sport?.name || '');
+      setMaxSets(sport?.maxSets || 3);
+      setPointScheme(sport?.pointScheme || 'standard');
+      setPtsWin(sport?.ptsWin || 3);
+      setPtsDraw(sport?.ptsDraw || 0);
+      setPtsLoss(sport?.ptsLoss || 0);
+      setDescription(sport?.description || '');
+      setCategories(
+        sport?.categories || [
+          { id: 'cat_male', name: 'Nam', gender: 'male' },
+          { id: 'cat_female', name: 'Nữ', gender: 'female' },
+        ]
+      );
+      setNewCatName('');
+    }
+  }, [isOpen, sport]);
 
   const applyCategoryPreset = (preset: 'team_gender' | 'racket' | 'tug') => {
     if (preset === 'team_gender') {
@@ -101,6 +118,8 @@ export const SportModal: React.FC<SportModalProps> = ({
     });
     onClose();
   };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 overflow-y-auto">

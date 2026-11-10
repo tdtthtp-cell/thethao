@@ -15,11 +15,17 @@ import {
   Sparkles,
   Check,
   Loader2,
+  ClipboardPaste,
+  FileText,
+  RefreshCw,
+  Info,
 } from 'lucide-react';
 import { Athlete, Team } from '../types';
 import {
   downloadAthleteImportTemplateExcel,
   parseAthletesFromExcel,
+  getExcelWorkbookSheets,
+  parseAthletesFromClipboardText,
   ParsedAthleteItem,
 } from '../services/teamImport';
 import { encryptText } from '../services/crypto';
@@ -40,15 +46,23 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
   onConfirmImport,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [activeInputTab, setActiveInputTab] = useState<'file' | 'paste'>('file');
+  const [pastedText, setPastedText] = useState('');
+
   const [file, setFile] = useState<File | null>(null);
+  const [availableSheets, setAvailableSheets] = useState<string[]>([]);
+  const [selectedSheet, setSelectedSheet] = useState<string>('ALL');
+
   const [isLoading, setIsLoading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
   const [previewAthletes, setPreviewAthletes] = useState<ParsedAthleteItem[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchFilter, setSearchFilter] = useState('');
   const [teamFilter, setTeamFilter] = useState('ALL');
 
-  // Selected default team when importing (can be set by user or derived from active team filter)
+  // Selected default team when importing
   const [targetTeamId, setTargetTeamId] = useState<string>('');
 
   // Close on Escape key
@@ -62,35 +76,97 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
+  // Reset or initialize state when modal opens/closes
   useEffect(() => {
     if (isOpen) {
+      setErrorMessage(null);
       if (initialTeamFilter && initialTeamFilter !== 'ALL') {
-        const found = teams.find((t) => t.id === initialTeamFilter || t.name.toLowerCase() === initialTeamFilter.toLowerCase());
-        setTargetTeamId(found ? found.id : (teams[0]?.id || ''));
+        const found = teams.find(
+          (t) => t.id === initialTeamFilter || t.name.toLowerCase() === initialTeamFilter.toLowerCase()
+        );
+        setTargetTeamId(found ? found.id : teams[0]?.id || '');
       } else if (teams.length > 0) {
         setTargetTeamId(teams[0].id);
       }
     } else {
-      // Clear file on close
       setFile(null);
+      setAvailableSheets([]);
+      setSelectedSheet('ALL');
       setPreviewAthletes([]);
       setSelectedIds(new Set());
       setSearchFilter('');
       setTeamFilter('ALL');
       setIsDragOver(false);
+      setErrorMessage(null);
+      setPastedText('');
+      setActiveInputTab('file');
     }
   }, [isOpen, initialTeamFilter, teams]);
 
-  if (!isOpen) return null;
-
   const currentTargetTeam = teams.find((t) => t.id === targetTeamId) || teams[0];
+
+  // Distinct list of teams available (including any newly detected teams from Excel)
+  const combinedTeamsList = useMemo(() => {
+    const map = new Map<string, { id: string; name: string; group: string }>();
+    teams.forEach((t) => map.set(t.id, { id: t.id, name: t.name, group: t.group }));
+
+    previewAthletes.forEach((a) => {
+      if (a.teamId && !map.has(a.teamId)) {
+        map.set(a.teamId, { id: a.teamId, name: a.teamName, group: a.group });
+      }
+    });
+
+    return Array.from(map.values());
+  }, [teams, previewAthletes]);
+
+  const processFile = async (f: File, sheetName = 'ALL') => {
+    setFile(f);
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    try {
+      // 1. Get sheet names for selector
+      const sheets = await getExcelWorkbookSheets(f);
+      setAvailableSheets(sheets);
+
+      // 2. Parse athletes
+      const targetSheet = sheetName === 'ALL' ? undefined : sheetName;
+      const res = await parseAthletesFromExcel(f, teams, targetTeamId || undefined, targetSheet);
+
+      if (res.length === 0) {
+        setErrorMessage(
+          'Không tìm thấy danh sách vận động viên hợp lệ trong file. Vui lòng kiểm tra lại cấu trúc các cột (Họ và tên, Số áo, Đội/Lớp) hoặc tải file mẫu để đối chiếu.'
+        );
+      }
+
+      setPreviewAthletes(res);
+      setSelectedIds(new Set(res.map((a) => a.id)));
+    } catch (err: unknown) {
+      console.error('Error parsing Excel file:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMessage(
+        `Không thể phân tích file: ${msg}. Vui lòng kiểm tra file không bị khóa mật khẩu và đúng định dạng .xlsx, .xls, .csv.`
+      );
+      setPreviewAthletes([]);
+      setSelectedIds(new Set());
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
     if (!selected) return;
-    await processFile(selected);
+    await processFile(selected, selectedSheet);
     if (e.target) {
-      e.target.value = ''; // Reset so user can pick same file again if desired
+      e.target.value = '';
+    }
+  };
+
+  const handleSheetChange = async (newSheet: string) => {
+    setSelectedSheet(newSheet);
+    if (file) {
+      await processFile(file, newSheet);
     }
   };
 
@@ -112,28 +188,39 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
     setIsDragOver(false);
     const dropped = e.dataTransfer.files?.[0];
     if (dropped) {
-      await processFile(dropped);
+      await processFile(dropped, 'ALL');
     }
   };
 
-  const processFile = async (f: File) => {
-    setFile(f);
+  // Process manual paste data
+  const handleProcessPastedText = () => {
+    if (!pastedText.trim()) {
+      setErrorMessage('Vui lòng dán dữ liệu bảng từ Excel trước khi bấm phân tích.');
+      return;
+    }
+
     setIsLoading(true);
+    setErrorMessage(null);
+
     try {
-      // Pass targetTeamId as the default fallback team for unmatched rows or if column is absent
-      const res = await parseAthletesFromExcel(f, teams, targetTeamId || undefined);
+      const res = parseAthletesFromClipboardText(pastedText, teams, targetTeamId || undefined);
+      if (res.length === 0) {
+        setErrorMessage(
+          'Không tìm thấy dòng dữ liệu vận động viên nào hợp lệ. Vui lòng sao chép các hàng từ Excel có chứa tên học sinh/cầu thủ.'
+        );
+      }
       setPreviewAthletes(res);
       setSelectedIds(new Set(res.map((a) => a.id)));
-    } catch (err) {
-      console.error(err);
-      alert('Không thể đọc file Excel VĐV! Vui lòng kiểm tra lại định dạng file (.xlsx, .xls, .csv).');
+    } catch (err: unknown) {
+      console.error('Error parsing pasted text:', err);
+      setErrorMessage('Đã xảy ra lỗi khi phân tích dữ liệu dán. Vui lòng kiểm tra lại định dạng.');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleTeamChange = (id: string, newTeamId: string) => {
-    const targetTeam = teams.find((t) => t.id === newTeamId);
+    const targetTeam = combinedTeamsList.find((t) => t.id === newTeamId);
     if (!targetTeam) return;
 
     setPreviewAthletes((prev) =>
@@ -153,7 +240,7 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
 
   // Bulk assign all athletes to a selected team
   const handleAssignAllToTeam = (teamIdToAssign: string) => {
-    const targetTeam = teams.find((t) => t.id === teamIdToAssign);
+    const targetTeam = combinedTeamsList.find((t) => t.id === teamIdToAssign);
     if (!targetTeam) return;
 
     setPreviewAthletes((prev) =>
@@ -193,7 +280,7 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
     });
   };
 
-  // Group stats for preview
+  // Count by team for badges
   const athletesCountByTeam = useMemo(() => {
     const map: Record<string, number> = {};
     previewAthletes.forEach((a) => {
@@ -217,54 +304,71 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
   const handleFinalConfirm = async () => {
     const toImport = previewAthletes.filter((a) => selectedIds.has(a.id));
     if (toImport.length === 0) {
-      alert('Vui lòng chọn ít nhất một vận động viên để nhập vào hệ thống!');
+      setErrorMessage('Vui lòng chọn ít nhất một vận động viên để nhập vào hệ thống!');
       return;
     }
 
     setIsLoading(true);
 
-    // Encrypt sensitive fields with E2EE
-    const finalAthletes: Athlete[] = [];
-    for (const item of toImport) {
-      const encId = item.nationalId
-        ? await encryptText(item.nationalId)
-        : 'e2ee:aXRtc3BvcnRfZW5j';
-      const encPhone = item.phone
-        ? await encryptText(item.phone)
-        : 'e2ee:aXRtc3BvcnRfZW5j';
+    try {
+      const finalAthletes: Athlete[] = [];
+      for (const item of toImport) {
+        const encId = item.nationalId
+          ? await encryptText(item.nationalId)
+          : 'e2ee:aXRtc3BvcnRfZW5j';
+        const encPhone = item.phone
+          ? await encryptText(item.phone)
+          : 'e2ee:aXRtc3BvcnRfZW5j';
 
-      const foundTeam = teams.find((t) => t.id === item.teamId);
+        const foundTeam = teams.find((t) => t.id === item.teamId || t.name.toLowerCase() === item.teamName.toLowerCase());
 
-      finalAthletes.push({
-        id: `A_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${finalAthletes.length + 1}`,
-        name: item.name,
-        jerseyNumber: item.jerseyNumber,
-        teamId: item.teamId,
-        teamName: item.teamName,
-        group: item.group,
-        sportId: foundTeam?.sportId,
-        categoryId: foundTeam?.categoryId,
-        position: item.position,
-        dateOfBirth: item.dateOfBirth,
-        nationalIdEncrypted: encId,
-        phoneEncrypted: encPhone,
-        status: 'approved',
-        registeredAt: new Date().toISOString().slice(0, 10),
-        goalsOrPoints: 0,
-        yellowCards: 0,
-        redCards: 0,
-        mvpCount: 0,
-      });
+        finalAthletes.push({
+          id: `A_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${finalAthletes.length + 1}`,
+          name: item.name,
+          jerseyNumber: item.jerseyNumber,
+          teamId: item.teamId,
+          teamName: item.teamName,
+          group: item.group,
+          sportId: foundTeam?.sportId,
+          categoryId: foundTeam?.categoryId,
+          position: item.position,
+          dateOfBirth: item.dateOfBirth,
+          nationalIdEncrypted: encId,
+          phoneEncrypted: encPhone,
+          status: 'approved',
+          registeredAt: new Date().toISOString().slice(0, 10),
+          goalsOrPoints: 0,
+          yellowCards: 0,
+          redCards: 0,
+          mvpCount: 0,
+        });
+      }
+
+      onConfirmImport(finalAthletes);
+      onClose();
+    } catch (err: unknown) {
+      console.error('Error confirming athletes import:', err);
+      setErrorMessage('Đã xảy ra lỗi khi mã hóa và lưu dữ liệu vận động viên.');
+    } finally {
+      setIsLoading(false);
     }
-
-    setIsLoading(false);
-    onConfirmImport(finalAthletes);
-    onClose();
   };
+
+  const handleResetToChooseAnotherFile = () => {
+    setFile(null);
+    setPreviewAthletes([]);
+    setSelectedIds(new Set());
+    setAvailableSheets([]);
+    setSelectedSheet('ALL');
+    setErrorMessage(null);
+    setPastedText('');
+  };
+
+  if (!isOpen) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-md p-3 sm:p-4 animate-in fade-in overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-3 sm:p-4 animate-in fade-in overflow-y-auto"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -275,10 +379,10 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
       >
         {/* Loading Overlay */}
         {isLoading && (
-          <div className="absolute inset-0 z-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xs flex flex-col items-center justify-center gap-3">
-            <Loader2 className="w-8 h-8 text-indigo-600 animate-spin" />
-            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
-              Đang phân tích & xử lý file Excel vận động viên...
+          <div className="absolute inset-0 z-30 bg-white/85 dark:bg-slate-900/85 backdrop-blur-xs flex flex-col items-center justify-center gap-3">
+            <Loader2 className="w-9 h-9 text-indigo-600 animate-spin" />
+            <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+              Đang phân tích và xử lý danh sách vận động viên...
             </p>
           </div>
         )}
@@ -291,13 +395,13 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
             </div>
             <div>
               <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <span>Nhập Danh Sách Vận Động Viên Trong Đội</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold">
-                  File Excel
+                <span>Nhập Danh Sách Vận Động Viên (VĐV)</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold">
+                  Excel / Copy-Paste
                 </span>
               </h3>
               <p className="text-xs text-slate-400">
-                Danh sách VĐV là tên các vận động viên cụ thể thuộc 1 đội (10A1, 10A2...).
+                Tự động nhận diện đội/lớp qua cột &quot;Đội / Lớp&quot;, tên Sheet hoặc bộ lọc đã chọn.
               </p>
             </div>
           </div>
@@ -310,103 +414,232 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
           </button>
         </div>
 
-        {/* Hidden file input controlled via ref */}
+        {/* Hidden accessible file input - connected via native label */}
         <input
+          id="athlete-excel-native-input"
           ref={fileInputRef}
           type="file"
           accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
           onChange={handleFileChange}
-          className="hidden"
+          className="sr-only"
         />
 
         {/* Body */}
-        <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1">
+        <div className="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1">
+          {/* In-app Error Banner */}
+          {errorMessage && (
+            <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-2xl flex items-start justify-between gap-3 text-xs text-rose-800 dark:text-rose-200 animate-in fade-in">
+              <div className="flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <span className="font-bold block">Thông báo xử lý file:</span>
+                  <p className="text-[11px] leading-relaxed text-rose-700 dark:text-rose-300">
+                    {errorMessage}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setErrorMessage(null)}
+                className="text-rose-500 hover:text-rose-700 dark:hover:text-rose-100 cursor-pointer p-1"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {/* Download Template Banner */}
-          <div className="p-4 bg-gradient-to-r from-indigo-50 via-sky-50 to-blue-50 dark:from-indigo-950/30 dark:via-sky-950/20 dark:to-blue-950/30 rounded-2xl border border-indigo-200/80 dark:border-indigo-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="p-3.5 bg-gradient-to-r from-indigo-50 via-sky-50 to-blue-50 dark:from-indigo-950/30 dark:via-sky-950/20 dark:to-blue-950/30 rounded-2xl border border-indigo-200/80 dark:border-indigo-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="space-y-0.5">
               <div className="flex items-center gap-2 text-indigo-800 dark:text-indigo-300 font-bold text-xs sm:text-sm">
                 <FileSpreadsheet className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                <span>Tải file Excel mẫu danh sách VĐV theo đội:</span>
+                <span>Tải file Excel mẫu chuẩn (.xlsx) danh sách VĐV:</span>
               </div>
               <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                Gồm các cột: STT, Họ và Tên VĐV, Số Áo, Đội / Lớp, Vị Trí, Ngày Sinh, SĐT, CCCD, Ghi Chú.
+                Gồm các cột: STT, Họ và Tên, Số Áo, Đội / Lớp, Vị Trí, Ngày Sinh, SĐT, CCCD, Ghi Chú.
               </p>
             </div>
             <button
               type="button"
-              onClick={() => downloadAthleteImportTemplateExcel(teams[0]?.name || '10A1')}
-              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
+              onClick={() => downloadAthleteImportTemplateExcel(currentTargetTeam?.name || '10A1')}
+              className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-xs shrink-0 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Tải Mẫu VĐV (.xlsx)</span>
             </button>
           </div>
 
-          {/* Upload Dropzone */}
-          {!file && (
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              className={`border-2 border-dashed rounded-3xl p-8 sm:p-10 flex flex-col items-center justify-center text-center cursor-pointer transition select-none ${
-                isDragOver
-                  ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40 scale-[1.01]'
-                  : 'border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 bg-slate-50/50 dark:bg-slate-900/50 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20'
-              }`}
-            >
-              <div className="w-14 h-14 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-3 shadow-xs">
-                <Upload className="w-7 h-7" />
-              </div>
-              <p className="font-extrabold text-sm sm:text-base text-slate-800 dark:text-slate-200 mb-1">
-                {isDragOver ? 'Thả file Excel vào đây ngay' : 'Kéo thả file Excel danh sách VĐV vào đây'}
-              </p>
-              <p className="text-xs text-slate-400 mb-4">
-                Hỗ trợ định dạng <strong>.xlsx, .xls, .csv</strong> (Hệ thống tự động nhận diện đội/lớp)
-              </p>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  fileInputRef.current?.click();
-                }}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
-              >
-                <FileSpreadsheet className="w-4 h-4" />
-                <span>Bấm Chọn File Từ Máy Tính</span>
-              </button>
-            </div>
-          )}
-
-          {/* Preview Section */}
-          {file && (
+          {/* When NO data is loaded yet: Show Upload Options */}
+          {previewAthletes.length === 0 && !file && (
             <div className="space-y-4">
-              {/* File Info Bar */}
-              <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-100 dark:bg-slate-800/60 rounded-2xl text-xs">
-                <div className="flex items-center gap-2">
-                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-                  <span className="font-bold text-slate-800 dark:text-slate-200">{file.name}</span>
-                  <span className="text-slate-400">
-                    ({previewAthletes.length} vận động viên tìm thấy)
-                  </span>
-                </div>
+              {/* Method Switcher Tabs */}
+              <div className="flex items-center p-1 bg-slate-100 dark:bg-slate-800 rounded-2xl border border-slate-200/80 dark:border-slate-700 text-xs font-bold">
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
+                  onClick={() => setActiveInputTab('file')}
+                  className={`flex-1 py-2 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer ${
+                    activeInputTab === 'file'
+                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  }`}
                 >
-                  Chọn file khác
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Chọn File Excel (.xlsx, .xls, .csv)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveInputTab('paste')}
+                  className={`flex-1 py-2 rounded-xl transition flex items-center justify-center gap-2 cursor-pointer ${
+                    activeInputTab === 'paste'
+                      ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+                  }`}
+                >
+                  <ClipboardPaste className="w-4 h-4" />
+                  <span>Dán Trực Tiếp Bảng Excel (Copy-Paste)</span>
                 </button>
               </div>
 
-              {/* Team Auto-Detection & Quick Assignment Bar */}
+              {/* Tab 1: File Upload Dropzone with Native Label */}
+              {activeInputTab === 'file' && (
+                <label
+                  htmlFor="athlete-excel-native-input"
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`border-2 border-dashed rounded-3xl p-8 sm:p-12 flex flex-col items-center justify-center text-center cursor-pointer transition select-none block ${
+                    isDragOver
+                      ? 'border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40 scale-[1.01]'
+                      : 'border-slate-300 dark:border-slate-700 hover:border-indigo-500 dark:hover:border-indigo-500 bg-slate-50/50 dark:bg-slate-900/50 hover:bg-indigo-50/30 dark:hover:bg-indigo-950/20'
+                  }`}
+                >
+                  <div className="w-16 h-16 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-3.5 shadow-xs mx-auto">
+                    <Upload className="w-8 h-8" />
+                  </div>
+                  <p className="font-extrabold text-base sm:text-lg text-slate-800 dark:text-slate-100 mb-1">
+                    {isDragOver ? 'Thả file Excel vào đây ngay' : 'Bấm vào đây hoặc kéo thả file Excel vào đây'}
+                  </p>
+                  <p className="text-xs text-slate-400 mb-4 max-w-md mx-auto">
+                    Hỗ trợ định dạng <strong>.xlsx, .xls, .csv</strong>. Hệ thống tự động phân loại theo cột <strong>Đội / Lớp</strong> hoặc theo bộ lọc hiện tại.
+                  </p>
+                  <span className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition shadow-xs pointer-events-none">
+                    <FileSpreadsheet className="w-4 h-4" />
+                    <span>Chọn File Từ Máy Tính</span>
+                  </span>
+                </label>
+              )}
+
+              {/* Tab 2: Copy-Paste Raw Table Text */}
+              {activeInputTab === 'paste' && (
+                <div className="space-y-3">
+                  <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 text-xs text-slate-500">
+                    <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-bold mb-1">
+                      <Info className="w-4 h-4 text-indigo-600" />
+                      <span>Cách sao chép trực tiếp từ Excel / Google Sheets:</span>
+                    </div>
+                    <p className="text-[11px] leading-relaxed">
+                      1. Mở file Excel trên máy của bạn &rarr; 2. Bôi đen các hàng dữ liệu VĐV &rarr; 3. Bấm <strong>Ctrl + C</strong> &rarr; 4. Nhấp vào khung bên dưới và bấm <strong>Ctrl + V</strong> &rarr; 5. Bấm &quot;Phân tích dữ liệu dán&quot;.
+                    </p>
+                  </div>
+
+                  <textarea
+                    rows={7}
+                    value={pastedText}
+                    onChange={(e) => setPastedText(e.target.value)}
+                    placeholder={`Dán bảng dữ liệu VĐV vào đây...\nVí dụ:\n1\tNguyễn Văn Hoàng\t10\t10A1\tTiền đạo\t2010-05-15\n2\tTrần Quốc Bảo\t1\t10A1\tThủ môn\t2010-08-20`}
+                    className="w-full p-3 font-mono text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-2xl outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+
+                  <div className="flex justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPastedText('')}
+                      className="px-3 py-2 bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-semibold cursor-pointer"
+                    >
+                      Xóa nội dung
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleProcessPastedText}
+                      disabled={!pastedText.trim()}
+                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                    >
+                      <Sparkles className="w-4 h-4" />
+                      <span>Phân Tích Dữ Liệu Dán</span>
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* When Data IS Loaded: Preview Table & Controls */}
+          {previewAthletes.length > 0 && (
+            <div className="space-y-4">
+              {/* File Info Bar & Switch */}
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-slate-100 dark:bg-slate-800/60 rounded-2xl text-xs">
+                <div className="flex items-center gap-2">
+                  <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {file ? file.name : 'Dữ liệu dán trực tiếp'}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 font-extrabold text-[10px]">
+                    {previewAthletes.length} VĐV tìm thấy
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleResetToChooseAnotherFile}
+                    className="px-2.5 py-1 text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer flex items-center gap-1"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Chọn file khác</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Sheet Selection Pills (if multiple sheets exist in file) */}
+              {availableSheets.length > 1 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+                  <span className="text-slate-400 text-[11px] font-semibold shrink-0">Chọn Sheet:</span>
+                  <button
+                    type="button"
+                    onClick={() => handleSheetChange('ALL')}
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold shrink-0 transition cursor-pointer ${
+                      selectedSheet === 'ALL'
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    Tất cả các sheet ({availableSheets.length})
+                  </button>
+                  {availableSheets.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => handleSheetChange(s)}
+                      className={`px-2.5 py-1 rounded-xl text-[11px] font-bold shrink-0 transition cursor-pointer ${
+                        selectedSheet === s
+                          ? 'bg-indigo-600 text-white'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                      }`}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Team Auto-Detection & Quick Bulk Assignment Bar */}
               <div className="p-3.5 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-2xl border border-indigo-200/80 dark:border-indigo-800/80 space-y-2.5 text-xs">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex items-center gap-2 font-bold text-indigo-900 dark:text-indigo-200">
                     <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                     <span>Quy tắc phân bổ Đội / Lớp:</span>
                     <span className="text-[11px] font-normal text-slate-500 dark:text-slate-400">
-                      (Tự động nhận diện từ cột "Đội / Lớp" hoặc gán theo bộ lọc)
+                      (Tự động nhận diện theo cột &quot;Đội / Lớp&quot; hoặc gán hàng loạt)
                     </span>
                   </div>
 
@@ -432,7 +665,7 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
                       onChange={(e) => setTargetTeamId(e.target.value)}
                       className="px-2.5 py-1 bg-white dark:bg-slate-900 border border-indigo-300 dark:border-indigo-700 rounded-lg text-xs font-bold text-indigo-700 dark:text-indigo-300 outline-none"
                     >
-                      {teams.map((t) => (
+                      {combinedTeamsList.map((t) => (
                         <option key={t.id} value={t.id}>
                           {t.name} ({t.group})
                         </option>
@@ -477,7 +710,7 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
                     className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs"
                   >
                     <option value="ALL">Tất cả đội ({previewAthletes.length})</option>
-                    {teams.map((t) => (
+                    {combinedTeamsList.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.name}
                       </option>
@@ -489,7 +722,7 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
               {/* Preview Table */}
               <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden max-h-72 overflow-y-auto">
                 <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 uppercase text-[10px] font-bold sticky top-0">
+                  <thead className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 uppercase text-[10px] font-bold sticky top-0 z-10">
                     <tr>
                       <th className="p-3 w-10 text-center">
                         <input
@@ -542,7 +775,7 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
                                 onChange={(e) => handleTeamChange(a.id, e.target.value)}
                                 className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-100"
                               >
-                                {teams.map((t) => (
+                                {combinedTeamsList.map((t) => (
                                   <option key={t.id} value={t.id}>
                                     {t.name} ({t.group})
                                   </option>
@@ -585,6 +818,7 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
                               type="button"
                               onClick={() => handleDeleteRow(a.id)}
                               className="p-1 text-slate-400 hover:text-rose-600 rounded cursor-pointer"
+                              title="Xóa VĐV này khỏi danh sách xem trước"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -602,13 +836,13 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
         {/* Footer */}
         <div className="p-4 sm:p-5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0 bg-slate-50 dark:bg-slate-950">
           <div className="text-xs text-slate-500">
-            {file ? (
+            {previewAthletes.length > 0 ? (
               <span>
                 Đã chọn <strong className="text-indigo-600 font-bold">{selectedIds.size}</strong> /{' '}
                 {previewAthletes.length} vận động viên
               </span>
             ) : (
-              <span>Chưa chọn file dữ liệu</span>
+              <span>Chưa nạp dữ liệu vận động viên</span>
             )}
           </div>
 
@@ -623,7 +857,7 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
             <button
               type="button"
               onClick={handleFinalConfirm}
-              disabled={!file || selectedIds.size === 0 || isLoading}
+              disabled={previewAthletes.length === 0 || selectedIds.size === 0 || isLoading}
               className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
             >
               <CheckCircle2 className="w-4 h-4" />

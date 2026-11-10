@@ -593,12 +593,12 @@ export function matchTeamForAthlete(
   const cleanRawTeam = (rawTeam || '').trim();
   const cleanRawGroup = (rawGroup || '').trim();
 
-  // If column has an explicit team name:
+  // 1. If column has an explicit team/class name in the row:
   if (cleanRawTeam) {
     const normCandidate = normalizeTeamKey(cleanRawTeam);
     const normGroup = cleanRawGroup.toLowerCase();
 
-    // 1. Direct ID or Name match
+    // 1a. Direct ID or Name match
     const directMatch = teams.find(
       (t) => t.id === cleanRawTeam || t.name.toLowerCase() === cleanRawTeam.toLowerCase()
     );
@@ -606,7 +606,7 @@ export function matchTeamForAthlete(
       return { team: directMatch, method: 'excel_column', rawTeamFromExcel: cleanRawTeam };
     }
 
-    // 2. Normalized Name match (e.g. "10A7, 8" -> "10A7,8", "12C9, 12C11" -> "12C9,12C11")
+    // 1b. Normalized Name match (e.g. "10A7, 8" -> "10A7,8", "12C9, 12C11" -> "12C9,12C11")
     const normMatches = teams.filter((t) => normalizeTeamKey(t.name) === normCandidate);
     if (normMatches.length === 1) {
       return { team: normMatches[0], method: 'excel_column', rawTeamFromExcel: cleanRawTeam };
@@ -618,7 +618,7 @@ export function matchTeamForAthlete(
       return { team: groupMatch || normMatches[0], method: 'excel_column', rawTeamFromExcel: cleanRawTeam };
     }
 
-    // 3. Substring / Class tokens match (e.g. "10A1" in "10A1,4")
+    // 1c. Substring / Class tokens match (e.g. "10A1" in "10A1,4")
     const candidateTokens = extractClassTokens(cleanRawTeam);
     const tokenMatches = teams.filter((t) => {
       const teamTokens = extractClassTokens(t.name);
@@ -633,12 +633,16 @@ export function matchTeamForAthlete(
       );
       return { team: groupMatch || tokenMatches[0], method: 'excel_column', rawTeamFromExcel: cleanRawTeam };
     }
+
+    // 1d. Explicit team mentioned in row but not in teams yet:
+    // CRITICAL: DO NOT overwrite with defaultTeam! Preserves class name from file
+    return { team: undefined, method: 'excel_column', rawTeamFromExcel: cleanRawTeam };
   }
 
-  // If row team column is empty or unparseable, check sheet name:
+  // 2. If row team column is empty or unparseable, check sheet name (e.g. sheet "10A1", "10A2"):
   if (sheetName) {
-    const cleanSheet = sheetName.replace(/^(danhsachvdv|danh sách vđv|vdv|roster)_?/i, '').trim();
-    if (cleanSheet && !cleanSheet.toLowerCase().includes('huongdan')) {
+    const cleanSheet = sheetName.replace(/^(danhsachvdv|danh sách vđv|vdv|roster|danhsach|danh sách)_?/i, '').trim();
+    if (cleanSheet && !cleanSheet.toLowerCase().includes('huongdan') && !cleanSheet.toLowerCase().includes('hướng dẫn')) {
       const normSheet = normalizeTeamKey(cleanSheet);
       const sheetDirectMatch = teams.find(
         (t) => t.id === cleanSheet || t.name.toLowerCase() === cleanSheet.toLowerCase() || normalizeTeamKey(t.name) === normSheet
@@ -654,16 +658,18 @@ export function matchTeamForAthlete(
       if (tokenMatches.length > 0) {
         return { team: tokenMatches[0], method: 'excel_sheet', rawTeamFromExcel: cleanSheet };
       }
+      if (/^\d+[a-zA-Z]/.test(cleanSheet)) {
+        return { team: undefined, method: 'excel_sheet', rawTeamFromExcel: cleanSheet };
+      }
     }
   }
 
-  // If still not matched, use defaultTeam from user filter:
+  // 3. Fallback to defaultTeam or preselected filter:
   if (defaultTeam) {
-    return { team: defaultTeam, method: 'default_filter', rawTeamFromExcel: cleanRawTeam || defaultTeam.name };
+    return { team: defaultTeam, method: 'default_filter', rawTeamFromExcel: defaultTeam.name };
   }
 
-  // If no default team and no match, return undefined team
-  return { team: undefined, method: 'manual', rawTeamFromExcel: cleanRawTeam };
+  return { team: undefined, method: 'manual', rawTeamFromExcel: '' };
 }
 
 /**
@@ -685,6 +691,10 @@ export function formatExcelDate(val: unknown): string {
     }
   }
   const s = String(val).trim();
+  // Check if birth year only (e.g. 2008, 2009, 2010)
+  if (/^(19\d\d|20\d\d)$/.test(s)) {
+    return `${s}-01-01`;
+  }
   // Check if DD/MM/YYYY or DD-MM-YYYY
   const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
   if (dmy) {
@@ -700,6 +710,342 @@ export function formatExcelDate(val: unknown): string {
   return s || '2010-01-01';
 }
 
+export interface ParseAthletesResult {
+  athletes: ParsedAthleteItem[];
+  sheetNames: string[];
+  totalRowsProcessed: number;
+}
+
+/**
+ * Heuristically parse raw matrix rows (from Excel or pasted text) into athletes
+ */
+export function parseRawAthleteRows(
+  rawRows: (string | number)[][],
+  sheetName: string,
+  teams: Team[],
+  defaultTeam?: Team
+): ParsedAthleteItem[] {
+  if (!rawRows || rawRows.length === 0) return [];
+
+  // Locate header row using multi-column scoring
+  let headerRowIdx = -1;
+  let colMap: Record<string, number> = {};
+  let highestScore = 0;
+
+  for (let r = 0; r < Math.min(rawRows.length, 20); r++) {
+    const row = rawRows[r];
+    if (!Array.isArray(row) || row.length === 0) continue;
+
+    const tempMap: Record<string, number> = {};
+    let score = 0;
+
+    row.forEach((cell, colIdx) => {
+      const str = String(cell).trim().toLowerCase();
+      if (!str) return;
+
+      if (
+        str === 'stt' ||
+        str === 'no.' ||
+        str === 'no' ||
+        str === 'tt' ||
+        str === 'số tt' ||
+        str === 'số thứ tự' ||
+        str === '#'
+      ) {
+        tempMap['stt'] = colIdx;
+        score += 1;
+      } else if (
+        str.includes('họ và đệm') ||
+        str.includes('họ đệm') ||
+        str.includes('họ và tên lót') ||
+        str.includes('họ lót') ||
+        str.includes('họ và chữ lót') ||
+        str === 'họ' ||
+        str === 'ho' ||
+        str === 'last name' ||
+        str === 'surname'
+      ) {
+        tempMap['lastName'] = colIdx;
+        score += 1.5;
+      } else if (
+        str === 'tên' ||
+        str === 'ten' ||
+        str === 'tên gọi' ||
+        str === 'first name'
+      ) {
+        tempMap['firstName'] = colIdx;
+        score += 1.5;
+      } else if (
+        str.includes('họ và tên') ||
+        str.includes('ho va ten') ||
+        str.includes('họ tên') ||
+        str.includes('ho ten') ||
+        str.includes('họ & tên') ||
+        str.includes('ho & ten') ||
+        str.includes('tên vđv') ||
+        str.includes('tên vận động viên') ||
+        str.includes('vận động viên') ||
+        str.includes('van dong vien') ||
+        str.includes('vđv') ||
+        str.includes('vdv') ||
+        str.includes('cầu thủ') ||
+        str.includes('cau thu') ||
+        str.includes('học sinh') ||
+        str.includes('hoc sinh') ||
+        str.includes('thành viên') ||
+        str.includes('thanh vien') ||
+        str === 'athlete' ||
+        str === 'player' ||
+        str === 'full name' ||
+        str === 'fullname' ||
+        str === 'name' ||
+        str.includes('tên')
+      ) {
+        tempMap['name'] = colIdx;
+        score += 2;
+      } else if (
+        str.includes('số áo') ||
+        str.includes('so ao') ||
+        str.includes('áo') ||
+        str.includes('jersey') ||
+        str.includes('sbd') ||
+        str.includes('số báo danh') ||
+        str.includes('số thi đấu') ||
+        str.includes('số áo đấu') ||
+        str === 'số'
+      ) {
+        tempMap['jersey'] = colIdx;
+        score += 1.5;
+      } else if (
+        str.includes('đội') ||
+        str.includes('doi') ||
+        str.includes('lớp') ||
+        str.includes('lop') ||
+        str.includes('chi đoàn') ||
+        str.includes('đơn vị') ||
+        str.includes('đội / lớp') ||
+        str.includes('doi / lop') ||
+        str === 'team' ||
+        str === 'class'
+      ) {
+        tempMap['team'] = colIdx;
+        score += 1.5;
+      } else if (
+        str.includes('bảng') ||
+        str.includes('bang') ||
+        str.includes('khối') ||
+        str.includes('khoi') ||
+        str === 'group' ||
+        str === 'stage'
+      ) {
+        tempMap['group'] = colIdx;
+        score += 1;
+      } else if (
+        str.includes('vị trí') ||
+        str.includes('vi tri') ||
+        str === 'position' ||
+        str === 'vai trò' ||
+        str === 'role'
+      ) {
+        tempMap['position'] = colIdx;
+        score += 1;
+      } else if (
+        str.includes('ngày sinh') ||
+        str.includes('ngay sinh') ||
+        str.includes('năm sinh') ||
+        str.includes('nam sinh') ||
+        str.includes('dob') ||
+        str.includes('sinh ngày') ||
+        str.includes('birth')
+      ) {
+        tempMap['dob'] = colIdx;
+        score += 1;
+      } else if (
+        str.includes('điện thoại') ||
+        str.includes('dien thoai') ||
+        str.includes('sđt') ||
+        str.includes('sdt') ||
+        str.includes('phone') ||
+        str.includes('tel') ||
+        str.includes('liên hệ') ||
+        str.includes('liên lạc')
+      ) {
+        tempMap['phone'] = colIdx;
+        score += 1;
+      } else if (
+        str.includes('cccd') ||
+        str.includes('cmnd') ||
+        str.includes('căn cước') ||
+        str.includes('định danh') ||
+        str.includes('dinh danh') ||
+        str.includes('mã định danh') ||
+        str === 'id' ||
+        str === 'national id'
+      ) {
+        tempMap['nationalId'] = colIdx;
+        score += 1;
+      } else if (str.includes('ghi chú') || str.includes('ghi chu') || str === 'note' || str.includes('tình trạng')) {
+        tempMap['note'] = colIdx;
+        score += 0.5;
+      }
+    });
+
+    const hasNameCol = tempMap['name'] !== undefined || tempMap['firstName'] !== undefined;
+    if (hasNameCol && score > highestScore && score >= 1.5) {
+      highestScore = score;
+      headerRowIdx = r;
+      colMap = tempMap;
+    }
+  }
+
+  // Fallback: If no header row matched, detect column roles from row content
+  if (headerRowIdx === -1) {
+    headerRowIdx = 0;
+    // Check first 5 rows to see where names and numbers are
+    let nameIdx = 1;
+    let jerseyIdx = 2;
+    let teamIdx = 3;
+
+    for (let r = 0; r < Math.min(rawRows.length, 5); r++) {
+      const row = rawRows[r];
+      if (!Array.isArray(row)) continue;
+      row.forEach((cell, idx) => {
+        const val = String(cell).trim();
+        // If string has >= 2 Vietnamese-like words without digits, it could be a name
+        if (val.split(/\s+/).length >= 2 && !/\d/.test(val) && val.length >= 5 && val.length <= 40) {
+          nameIdx = idx;
+        } else if (/^\d{1,2}$/.test(val) && Number(val) > 0 && Number(val) < 100) {
+          jerseyIdx = idx;
+        } else if (/^(10|11|12)[a-zA-Z]/i.test(val)) {
+          teamIdx = idx;
+        }
+      });
+    }
+
+    colMap = {
+      name: nameIdx,
+      jersey: jerseyIdx,
+      team: teamIdx,
+      position: 4,
+      dob: 5,
+      phone: 6,
+      nationalId: 7,
+    };
+  }
+
+  const results: ParsedAthleteItem[] = [];
+
+  for (let r = headerRowIdx + 1; r < rawRows.length; r++) {
+    const row = rawRows[r];
+    if (!Array.isArray(row) || row.length === 0) continue;
+
+    // Extract athlete name
+    let name = '';
+    if (colMap['lastName'] !== undefined && colMap['firstName'] !== undefined) {
+      const last = String(row[colMap['lastName']] || '').trim();
+      const first = String(row[colMap['firstName']] || '').trim();
+      name = `${last} ${first}`.trim();
+    } else if (colMap['name'] !== undefined) {
+      name = String(row[colMap['name']] || '').trim();
+      if (colMap['lastName'] !== undefined) {
+        const last = String(row[colMap['lastName']] || '').trim();
+        if (last && !name.toLowerCase().startsWith(last.toLowerCase())) {
+          name = `${last} ${name}`.trim();
+        }
+      }
+    } else if (colMap['firstName'] !== undefined) {
+      name = String(row[colMap['firstName']] || '').trim();
+    }
+
+    // Skip empty rows, header repeats, or total/footer rows
+    if (
+      !name ||
+      name.toLowerCase() === 'họ và tên' ||
+      name.toLowerCase() === 'họ tên' ||
+      name.toLowerCase() === 'vận động viên' ||
+      name.toLowerCase() === 'tên vận động viên' ||
+      name.toLowerCase() === 'tên vđv' ||
+      name.toLowerCase() === 'cầu thủ' ||
+      name.toLowerCase().startsWith('tổng cộng') ||
+      name.toLowerCase().startsWith('tổng số') ||
+      name.toLowerCase().startsWith('danh sách')
+    ) {
+      continue;
+    }
+
+    // If name is just digits (like STT accidentally read), skip
+    if (/^\d+$/.test(name)) continue;
+
+    const rawJerseyVal = colMap['jersey'] !== undefined ? row[colMap['jersey']] : undefined;
+    let rawJersey = NaN;
+    if (rawJerseyVal !== undefined && rawJerseyVal !== null) {
+      const cleanedNum = String(rawJerseyVal).replace(/[^0-9]/g, '');
+      if (cleanedNum) {
+        rawJersey = Number(cleanedNum);
+      }
+    }
+    if (isNaN(rawJersey) || rawJersey <= 0) {
+      rawJersey = results.length + 1;
+    }
+
+    const rawTeamName = colMap['team'] !== undefined ? String(row[colMap['team']] || '').trim() : '';
+    const rawGroupName = colMap['group'] !== undefined ? String(row[colMap['group']] || '').trim() : '';
+    const position = colMap['position'] !== undefined ? String(row[colMap['position']] || '').trim() || 'Vận động viên' : 'Vận động viên';
+
+    const rawDob = colMap['dob'] !== undefined ? row[colMap['dob']] : '2010-01-01';
+    const dob = formatExcelDate(rawDob);
+
+    const phone = colMap['phone'] !== undefined ? String(row[colMap['phone']] || '').trim() : '';
+    const nationalId = colMap['nationalId'] !== undefined ? String(row[colMap['nationalId']] || '').trim() : '';
+
+    // Match team intelligently:
+    const matchResult = matchTeamForAthlete(rawTeamName, rawGroupName, sheetName, teams, defaultTeam);
+
+    let assignedTeamId = 'T_UNASSIGNED';
+    let assignedTeamName = 'Đội Chưa Phân Lớp';
+    let assignedGroup = 'Khối 10';
+
+    if (matchResult.team) {
+      assignedTeamId = matchResult.team.id;
+      assignedTeamName = matchResult.team.name;
+      assignedGroup = matchResult.team.group;
+    } else if (matchResult.rawTeamFromExcel) {
+      assignedTeamName = matchResult.rawTeamFromExcel;
+      assignedTeamId = `T_IMP_${assignedTeamName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      const gMatch = assignedTeamName.match(/^(10|11|12)/);
+      assignedGroup = rawGroupName || (gMatch ? `Khối ${gMatch[1]}` : (defaultTeam?.group || 'Khối 10'));
+    } else if (defaultTeam) {
+      assignedTeamId = defaultTeam.id;
+      assignedTeamName = defaultTeam.name;
+      assignedGroup = defaultTeam.group;
+    } else if (teams.length > 0) {
+      assignedTeamId = teams[0].id;
+      assignedTeamName = teams[0].name;
+      assignedGroup = teams[0].group;
+    }
+
+    results.push({
+      id: `A_IMP_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${results.length + 1}`,
+      name,
+      jerseyNumber: rawJersey,
+      teamName: assignedTeamName,
+      teamId: assignedTeamId,
+      group: assignedGroup,
+      position,
+      dateOfBirth: dob,
+      phone,
+      nationalId,
+      status: 'approved',
+      rawRowNumber: r + 1,
+      isValid: true,
+      rawTeamFromExcel: rawTeamName,
+      matchMethod: matchResult.method,
+    });
+  }
+
+  return results;
+}
+
 /**
  * 4. Parse Athletes From Uploaded Excel file (.xlsx, .xls, .csv)
  * Identifies team either by Excel row column or by active user filter
@@ -707,7 +1053,8 @@ export function formatExcelDate(val: unknown): string {
 export async function parseAthletesFromExcel(
   file: File,
   teams: Team[],
-  defaultTeamId?: string
+  defaultTeamId?: string,
+  targetSheetName?: string
 ): Promise<ParsedAthleteItem[]> {
   const data = await file.arrayBuffer();
   const wb = XLSX.read(data, { type: 'array' });
@@ -733,12 +1080,17 @@ export async function parseAthletesFromExcel(
     );
   });
 
-  wb.SheetNames.forEach((sheetName) => {
+  const sheetsToProcess = targetSheetName
+    ? [targetSheetName]
+    : wb.SheetNames;
+
+  sheetsToProcess.forEach((sheetName) => {
     const lower = sheetName.trim().toLowerCase();
     if (lower.includes('huongdan') || lower.includes('hướng dẫn') || lower.includes('readme')) return;
 
     // If file has both a teams sheet and athlete sheets, skip teams sheet when importing athletes
     if (
+      !targetSheetName &&
       hasExplicitAthleteSheet &&
       (lower === 'danhsachdoi' || lower === 'danh sách đội' || lower === 'teams' || lower === 'danh_sach_doi')
     ) {
@@ -751,246 +1103,55 @@ export async function parseAthletesFromExcel(
     const rawRows = XLSX.utils.sheet_to_json<(string | number)[]>(ws, { header: 1, defval: '' });
     if (rawRows.length === 0) return;
 
-    // Locate header row using multi-column scoring to reject title banners (e.g. "DANH SÁCH VẬN ĐỘNG VIÊN...")
-    let headerRowIdx = -1;
-    let colMap: Record<string, number> = {};
-    let highestScore = 0;
-
-    for (let r = 0; r < Math.min(rawRows.length, 15); r++) {
-      const row = rawRows[r];
-      if (!Array.isArray(row) || row.length === 0) continue;
-
-      const tempMap: Record<string, number> = {};
-      let score = 0;
-
-      row.forEach((cell, colIdx) => {
-        const str = String(cell).trim().toLowerCase();
-        if (!str) return;
-
-        if (
-          str === 'stt' ||
-          str === 'no.' ||
-          str === 'tt' ||
-          str === 'số tt' ||
-          str === 'số thứ tự'
-        ) {
-          tempMap['stt'] = colIdx;
-          score += 1;
-        } else if (
-          str.includes('họ và đệm') ||
-          str.includes('họ đệm') ||
-          str.includes('họ và tên lót') ||
-          str.includes('họ lót') ||
-          str === 'họ' ||
-          str === 'ho'
-        ) {
-          tempMap['lastName'] = colIdx;
-          score += 1.5;
-        } else if (
-          str === 'tên' ||
-          str === 'ten' ||
-          str === 'first name'
-        ) {
-          tempMap['firstName'] = colIdx;
-          score += 1.5;
-        } else if (
-          str.includes('họ và tên') ||
-          str.includes('ho va ten') ||
-          str.includes('họ tên') ||
-          str.includes('ho ten') ||
-          str === 'tên vđv' ||
-          str === 'vận động viên' ||
-          str === 'vđv' ||
-          str === 'vdv' ||
-          str === 'họ và tên vđv' ||
-          str === 'họ và tên vận động viên' ||
-          str === 'athlete' ||
-          str === 'full name' ||
-          str === 'fullname'
-        ) {
-          tempMap['name'] = colIdx;
-          score += 2;
-        } else if (
-          str.includes('số áo') ||
-          str.includes('so ao') ||
-          str === 'áo' ||
-          str === 'jersey' ||
-          str === 'số'
-        ) {
-          tempMap['jersey'] = colIdx;
-          score += 1.5;
-        } else if (
-          str.includes('đội') ||
-          str.includes('doi') ||
-          str.includes('lớp') ||
-          str.includes('lop') ||
-          str.includes('chi đoàn') ||
-          str.includes('đơn vị') ||
-          str.includes('đội / lớp') ||
-          str.includes('doi / lop') ||
-          str === 'team' ||
-          str === 'class'
-        ) {
-          tempMap['team'] = colIdx;
-          score += 1.5;
-        } else if (
-          str.includes('bảng') ||
-          str.includes('bang') ||
-          str.includes('khối') ||
-          str.includes('khoi') ||
-          str === 'group'
-        ) {
-          tempMap['group'] = colIdx;
-          score += 1;
-        } else if (
-          str.includes('vị trí') ||
-          str.includes('vi tri') ||
-          str === 'position' ||
-          str === 'vai trò'
-        ) {
-          tempMap['position'] = colIdx;
-          score += 1;
-        } else if (
-          str.includes('ngày sinh') ||
-          str.includes('ngay sinh') ||
-          str.includes('năm sinh') ||
-          str.includes('nam sinh') ||
-          str.includes('dob') ||
-          str.includes('sinh ngày')
-        ) {
-          tempMap['dob'] = colIdx;
-          score += 1;
-        } else if (
-          str.includes('điện thoại') ||
-          str.includes('dien thoai') ||
-          str.includes('sđt') ||
-          str.includes('sdt') ||
-          str.includes('phone') ||
-          str.includes('liên hệ') ||
-          str.includes('liên lạc')
-        ) {
-          tempMap['phone'] = colIdx;
-          score += 1;
-        } else if (
-          str.includes('cccd') ||
-          str.includes('cmnd') ||
-          str.includes('định danh') ||
-          str.includes('dinh danh') ||
-          str.includes('mã định danh') ||
-          str.includes('id')
-        ) {
-          tempMap['nationalId'] = colIdx;
-          score += 1;
-        } else if (str.includes('ghi chú') || str.includes('ghi chu') || str === 'note') {
-          tempMap['note'] = colIdx;
-          score += 0.5;
-        }
-      });
-
-      // Require at least name column (or lastName + firstName) and score >= 2.5
-      // This eliminates 1-cell title banners such as "DANH SÁCH VẬN ĐỘNG VIÊN..."
-      const hasNameCol = tempMap['name'] !== undefined || tempMap['firstName'] !== undefined;
-      if (hasNameCol && score > highestScore && score >= 2.5) {
-        highestScore = score;
-        headerRowIdx = r;
-        colMap = tempMap;
-      }
-    }
-
-    // Default fallback if no header matched
-    if (headerRowIdx === -1) {
-      headerRowIdx = 0;
-      colMap = {
-        name: 1,
-        jersey: 2,
-        team: 3,
-        position: 4,
-        dob: 5,
-        phone: 6,
-        nationalId: 7,
-      };
-    }
-
-    for (let r = headerRowIdx + 1; r < rawRows.length; r++) {
-      const row = rawRows[r];
-      if (!Array.isArray(row) || row.length === 0) continue;
-
-      // Extract athlete name (combining separate lastName + firstName if present)
-      let name = '';
-      if (colMap['lastName'] !== undefined && colMap['firstName'] !== undefined) {
-        const last = String(row[colMap['lastName']] || '').trim();
-        const first = String(row[colMap['firstName']] || '').trim();
-        name = `${last} ${first}`.trim();
-      } else if (colMap['name'] !== undefined) {
-        name = String(row[colMap['name']] || '').trim();
-        if (colMap['lastName'] !== undefined) {
-          const last = String(row[colMap['lastName']] || '').trim();
-          if (last && !name.toLowerCase().startsWith(last.toLowerCase())) {
-            name = `${last} ${name}`.trim();
-          }
-        }
-      } else if (colMap['firstName'] !== undefined) {
-        name = String(row[colMap['firstName']] || '').trim();
-      }
-
-      // Skip empty rows, header repeats, or total/footer rows
-      if (
-        !name ||
-        name.toLowerCase() === 'họ và tên' ||
-        name.toLowerCase() === 'họ tên' ||
-        name.toLowerCase() === 'vận động viên' ||
-        name.toLowerCase().startsWith('tổng cộng') ||
-        name.toLowerCase().startsWith('tổng số')
-      ) {
-        continue;
-      }
-
-      // If name is just digits (like STT accidentally read), skip
-      if (/^\d+$/.test(name)) continue;
-
-      const rawJerseyVal = colMap['jersey'] !== undefined ? row[colMap['jersey']] : undefined;
-      let rawJersey = Number(rawJerseyVal);
-      if (isNaN(rawJersey) || rawJersey <= 0) {
-        rawJersey = parsedAthletes.length + 1;
-      }
-
-      const rawTeamName = colMap['team'] !== undefined ? String(row[colMap['team']] || '').trim() : '';
-      const rawGroupName = colMap['group'] !== undefined ? String(row[colMap['group']] || '').trim() : '';
-      const position = colMap['position'] !== undefined ? String(row[colMap['position']] || '').trim() || 'Vận động viên' : 'Vận động viên';
-
-      const rawDob = colMap['dob'] !== undefined ? row[colMap['dob']] : '2010-01-01';
-      const dob = formatExcelDate(rawDob);
-
-      const phone = colMap['phone'] !== undefined ? String(row[colMap['phone']] || '').trim() : '';
-      const nationalId = colMap['nationalId'] !== undefined ? String(row[colMap['nationalId']] || '').trim() : '';
-
-      // Match team intelligently:
-      // 1. Column "Đội / Lớp"
-      // 2. Sheet name
-      // 3. User active filter / default team
-      const matchResult = matchTeamForAthlete(rawTeamName, rawGroupName, sheetName, teams, defaultTeam);
-      const assignedTeam = matchResult.team || defaultTeam || (teams.length > 0 ? teams[0] : undefined);
-
-      parsedAthletes.push({
-        id: `A_IMP_${Date.now()}_${Math.random().toString(36).substring(2, 7)}_${parsedAthletes.length + 1}`,
-        name,
-        jerseyNumber: rawJersey,
-        teamName: assignedTeam ? assignedTeam.name : (rawTeamName || 'Đội Chưa Phân Lớp'),
-        teamId: assignedTeam ? assignedTeam.id : 'T_UNASSIGNED',
-        group: assignedTeam ? assignedTeam.group : (rawGroupName || 'Khối 10'),
-        position,
-        dateOfBirth: dob,
-        phone,
-        nationalId,
-        status: 'approved',
-        rawRowNumber: r + 1,
-        isValid: true,
-        rawTeamFromExcel: rawTeamName,
-        matchMethod: matchResult.method,
-      });
-    }
+    const sheetAthletes = parseRawAthleteRows(rawRows, sheetName, teams, defaultTeam);
+    parsedAthletes.push(...sheetAthletes);
   });
 
   return parsedAthletes;
+}
+
+/**
+ * Get all available sheet names from an Excel file
+ */
+export async function getExcelWorkbookSheets(file: File): Promise<string[]> {
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type: 'array' });
+    return wb.SheetNames.filter((name) => {
+      const lower = name.trim().toLowerCase();
+      return !lower.includes('huongdan') && !lower.includes('hướng dẫn') && !lower.includes('readme');
+    });
+  } catch (err) {
+    console.error('Error reading sheet names:', err);
+    return [];
+  }
+}
+
+/**
+ * 5. Parse athletes from raw clipboard text (e.g. copied directly from Excel / Google Sheets)
+ */
+export function parseAthletesFromClipboardText(
+  text: string,
+  teams: Team[],
+  defaultTeamId?: string
+): ParsedAthleteItem[] {
+  if (!text || !text.trim()) return [];
+
+  const defaultTeam = defaultTeamId
+    ? teams.find(
+        (t) => t.id === defaultTeamId || t.name.toLowerCase() === defaultTeamId.toLowerCase()
+      )
+    : undefined;
+
+  const lines = text.trim().split(/\r?\n/);
+  const rawRows: (string | number)[][] = lines.map((line) => {
+    // Check if comma or tab separated
+    if (line.includes('\t')) {
+      return line.split('\t').map((c) => c.trim());
+    }
+    return line.split(',').map((c) => c.trim());
+  });
+
+  return parseRawAthleteRows(rawRows, 'PastedData', teams, defaultTeam);
 }
 
