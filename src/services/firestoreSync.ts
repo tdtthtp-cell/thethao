@@ -409,6 +409,25 @@ export async function deleteMatchFromFirestore(matchId: string) {
   }
 }
 
+export async function deleteMultipleMatchesFromFirestore(matchIds: string[]) {
+  if (!matchIds || matchIds.length === 0) return;
+  try {
+    // Firestore batch limits 500 writes, process in chunks of 400
+    const chunkSize = 400;
+    for (let i = 0; i < matchIds.length; i += chunkSize) {
+      const chunk = matchIds.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach((id) => {
+        batch.delete(doc(db, MATCHES_COL, id));
+      });
+      await batch.commit();
+    }
+  } catch (err) {
+    console.error('Error bulk deleting matches from Firestore:', err);
+    throw err;
+  }
+}
+
 export async function syncNotificationToFirestore(notif: NotificationItem) {
   try {
     const cleaned = cleanForFirestore(notif);

@@ -38,6 +38,7 @@ import {
   syncMatchToFirestore,
   syncAllMatchesToFirestore,
   deleteMatchFromFirestore,
+  deleteMultipleMatchesFromFirestore,
   syncUserToFirestore,
   deleteUserFromFirestore,
 } from './services/firestoreSync';
@@ -50,6 +51,7 @@ import { AuthModal } from './components/AuthModal';
 import { NotificationDrawer } from './components/NotificationDrawer';
 import { AthleteModal } from './components/AthleteModal';
 import { AthleteExcelImportModal } from './components/AthleteExcelImportModal';
+import { MatchExcelImportModal } from './components/MatchExcelImportModal';
 import { SportModal } from './components/SportModal';
 import { MatchEditModal } from './components/MatchEditModal';
 import { MatchMinutesModal } from './components/MatchMinutesModal';
@@ -80,12 +82,31 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [athleteTeamFilter, setAthleteTeamFilter] = useState<string>('ALL');
   const [isDark, setIsDark] = useState<boolean>(false);
-  // User session state: By default when opening the application, admin is NOT logged in.
-  // Defaults strictly to DEFAULT_GUEST_USER (role: 'viewer', displayName: 'Khách xem', title: 'Chưa đăng nhập').
-  const [currentUser, setCurrentUser] = useState<UserProfile>(DEFAULT_GUEST_USER);
+  // User session state: Preserves logged in status across reloads (defaults to DEFAULT_GUEST_USER if not logged in)
+  const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = localStorage.getItem('sport_tournament_active_user');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && parsed.role && parsed.role !== 'viewer') {
+            return parsed;
+          }
+        }
+      }
+    } catch {
+      // ignore parse error
+    }
+    return DEFAULT_GUEST_USER;
+  });
 
   const handleLogin = (profile: UserProfile) => {
     setCurrentUser(profile);
+    try {
+      localStorage.setItem('sport_tournament_active_user', JSON.stringify(profile));
+    } catch {
+      // ignore
+    }
   };
 
   const handleLogout = () => {
@@ -114,6 +135,7 @@ export default function App() {
   const [isReportsModalOpen, setIsReportsModalOpen] = useState(false);
   const [isAthleteExcelImportOpen, setIsAthleteExcelImportOpen] = useState(false);
   const [athleteExcelImportTeam, setAthleteExcelImportTeam] = useState<string | undefined>(undefined);
+  const [isMatchExcelImportOpen, setIsMatchExcelImportOpen] = useState(false);
 
   const handleOpenAthleteExcelImport = (teamIdOrName?: string) => {
     setAthleteExcelImportTeam(teamIdOrName);
@@ -122,14 +144,6 @@ export default function App() {
 
   // 1. Initial State Load
   useEffect(() => {
-    // Purge any stored active user cache so the app always opens with admin not logged in
-    try {
-      localStorage.removeItem('sport_tournament_active_user');
-      sessionStorage.removeItem('sport_tournament_active_user');
-    } catch {
-      // ignore
-    }
-
     const loaded = loadTournamentState();
     setConfig(loaded.config);
     setSports(loaded.sports);
@@ -575,6 +589,74 @@ export default function App() {
     } catch (err) {
       console.error('Error deleting match from Firestore:', err);
     }
+  };
+
+  const handleDeleteMultipleMatches = async (matchIds: string[]) => {
+    if (!matchIds || matchIds.length === 0) return;
+    const idSet = new Set(matchIds);
+    setMatches((prev) => {
+      const next = prev.filter((m) => !idSet.has(m.id));
+      broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: next });
+      return next;
+    });
+    try {
+      await deleteMultipleMatchesFromFirestore(matchIds);
+    } catch (err) {
+      console.error('Error bulk deleting matches from Firestore:', err);
+    }
+  };
+
+  const handleImportMatchesFromExcel = (
+    newMatches: Match[],
+    newTeamsToCreate: Team[],
+    replaceExisting: boolean,
+    noticeMsg: string
+  ) => {
+    // 1. If any new teams were auto-discovered in the Excel schedule, register them
+    if (newTeamsToCreate && newTeamsToCreate.length > 0) {
+      setTeams((prev) => {
+        const existingIds = new Set(prev.map((t) => t.id));
+        const existingNames = new Set(prev.map((t) => t.name.toLowerCase()));
+        const teamsToAdd = newTeamsToCreate.filter(
+          (t) => !existingIds.has(t.id) && !existingNames.has(t.name.toLowerCase())
+        );
+        const merged = [...prev, ...teamsToAdd];
+        if (teamsToAdd.length > 0) {
+          syncMultipleTeamsToFirestore(teamsToAdd);
+        }
+        return merged;
+      });
+    }
+
+    // 2. Set matches (replace or append)
+    setMatches((prev) => {
+      let finalMatches: Match[];
+      if (replaceExisting) {
+        // Keep matches from other sports, replace matches of active sport
+        const otherSportsMatches = prev.filter(
+          (m) => m.sportId && m.sportId !== config.activeSportId
+        );
+        finalMatches = [...otherSportsMatches, ...newMatches];
+      } else {
+        const existingIds = new Set(prev.map((m) => m.id));
+        const uniqueNew = newMatches.filter((m) => !existingIds.has(m.id));
+        finalMatches = [...prev, ...uniqueNew];
+      }
+      syncAllMatchesToFirestore(finalMatches);
+      broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: finalMatches });
+      return finalMatches;
+    });
+
+    // Add smart notification
+    const newNotif: NotificationItem = {
+      id: 'N_' + Date.now(),
+      timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+      title: 'Nhập Lịch Thi Đấu Từ Excel',
+      message: noticeMsg,
+      type: 'system',
+      read: false,
+    };
+    setNotifications((prev) => [newNotif, ...prev]);
   };
 
   // Handlers for Athletes & Teams
@@ -1065,6 +1147,8 @@ export default function App() {
               onUpdateMatch={handleUpdateMatch}
               onAddMatch={handleAddMatch}
               onDeleteMatch={handleDeleteMatch}
+              onDeleteMultipleMatches={handleDeleteMultipleMatches}
+              onOpenMatchExcelImport={() => setIsMatchExcelImportOpen(true)}
               onGenerateSchedule={handleGenerateSchedule}
               onApplyMatchesBatch={handleApplyMatchesBatch}
               onReorderMatches={handleReorderMatches}
@@ -1262,6 +1346,16 @@ export default function App() {
         teams={teams}
         initialTeamFilter={athleteExcelImportTeam}
         onConfirmImport={handleImportMultipleAthletes}
+      />
+
+      {/* 9. Match Schedule Excel Import Modal */}
+      <MatchExcelImportModal
+        isOpen={isMatchExcelImportOpen}
+        onClose={() => setIsMatchExcelImportOpen(false)}
+        config={config}
+        sports={sports}
+        existingTeams={teams}
+        onImportMatches={handleImportMatchesFromExcel}
       />
     </div>
   );

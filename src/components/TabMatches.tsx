@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   Users,
   AlertCircle,
+  AlertTriangle,
   Keyboard,
   Shield,
   Lock,
@@ -23,11 +24,16 @@ import {
   ArrowUp,
   ArrowDown,
   FileDown,
+  FileSpreadsheet,
+  Download,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import { Match, Sport, StandingItem, Team, TournamentConfig, UserProfile } from '../types';
 import { playRefereeWhistle, playScoreChime } from '../services/sound';
 import { sendSmartNotification } from '../services/notifications';
 import { exportMatchMinutesToWord, exportScheduleToWord } from '../services/export';
+import { downloadMatchScheduleImportTemplateExcel } from '../services/matchImport';
 import { ScheduleGeneratorModal } from './ScheduleGeneratorModal';
 import { MatchReorderModal } from './MatchReorderModal';
 
@@ -42,6 +48,8 @@ interface TabMatchesProps {
   onUpdateMatch: (match: Match) => void;
   onAddMatch: (match: Match) => void;
   onDeleteMatch: (id: string) => void;
+  onDeleteMultipleMatches?: (ids: string[]) => void;
+  onOpenMatchExcelImport?: () => void;
   onGenerateSchedule: (customTeamsList?: Team[], startDate?: string, startHour?: number, intervalMinutes?: number) => void;
   onApplyMatchesBatch?: (newMatches: Match[], appendMode: boolean, noticeMsg: string) => void;
   onReorderMatches?: (reorderedMatches: Match[], noticeMsg?: string) => void;
@@ -60,6 +68,8 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
   onUpdateMatch,
   onAddMatch,
   onDeleteMatch,
+  onDeleteMultipleMatches,
+  onOpenMatchExcelImport,
   onGenerateSchedule,
   onApplyMatchesBatch,
   onReorderMatches,
@@ -76,6 +86,11 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
   const [isScheduleGeneratorModalOpen, setIsScheduleGeneratorModalOpen] = useState(false);
   const [scheduleNotice, setScheduleNotice] = useState<string | null>(null);
   const [matchToDelete, setMatchToDelete] = useState<Match | null>(null);
+
+  // Multi-match selection and bulk delete states
+  const [selectedMatchIds, setSelectedMatchIds] = useState<string[]>([]);
+  const [isConfirmBulkDeleteModalOpen, setIsConfirmBulkDeleteModalOpen] = useState(false);
+  const [isConfirmDeleteAllModalOpen, setIsConfirmDeleteAllModalOpen] = useState(false);
 
   const allAvailableGroups = useMemo(() => {
     const set = new Set<string>();
@@ -165,6 +180,59 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
     const matchStat = filterStatus === 'ALL' || m.status === filterStatus;
     return matchGrp && matchStat;
   });
+
+  const areAllFilteredMatchesSelected =
+    filteredMatches.length > 0 &&
+    filteredMatches.every((m) => selectedMatchIds.includes(m.id));
+
+  const handleToggleSelectAllMatches = () => {
+    if (areAllFilteredMatchesSelected) {
+      const filteredIdSet = new Set(filteredMatches.map((m) => m.id));
+      setSelectedMatchIds((prev) => prev.filter((id) => !filteredIdSet.has(id)));
+    } else {
+      setSelectedMatchIds((prev) => {
+        const next = new Set(prev);
+        filteredMatches.forEach((m) => next.add(m.id));
+        return Array.from(next);
+      });
+    }
+  };
+
+  const handleToggleMatchSelect = (matchId: string) => {
+    setSelectedMatchIds((prev) => {
+      if (prev.includes(matchId)) {
+        return prev.filter((id) => id !== matchId);
+      }
+      return [...prev, matchId];
+    });
+  };
+
+  const handleExecuteBulkDelete = () => {
+    if (selectedMatchIds.length === 0) return;
+    const count = selectedMatchIds.length;
+    if (onDeleteMultipleMatches) {
+      onDeleteMultipleMatches(selectedMatchIds);
+    } else {
+      selectedMatchIds.forEach((id) => onDeleteMatch(id));
+    }
+    setSelectedMatchIds([]);
+    setIsConfirmBulkDeleteModalOpen(false);
+    setScheduleNotice(`Đã xóa thành công ${count} trận đấu khỏi lịch thi đấu!`);
+  };
+
+  const handleExecuteDeleteAll = () => {
+    const allMatchesInSport = matches.filter((m) => !m.sportId || m.sportId === config.activeSportId);
+    const ids = allMatchesInSport.map((m) => m.id);
+    if (ids.length === 0) return;
+    if (onDeleteMultipleMatches) {
+      onDeleteMultipleMatches(ids);
+    } else {
+      ids.forEach((id) => onDeleteMatch(id));
+    }
+    setSelectedMatchIds([]);
+    setIsConfirmDeleteAllModalOpen(false);
+    setScheduleNotice(`Đã xóa toàn bộ ${ids.length} trận đấu của môn ${currentSport.name}!`);
+  };
 
   const activeMatch = matches.find((m) => m.id === activeScoringMatchId) || filteredMatches[0] || matches[0];
   const canManageActiveMatch = activeMatch ? canManageMatch(activeMatch) : false;
@@ -417,6 +485,30 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
               >
                 <ArrowUpDown className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                 <span>Đổi Thứ Tự Trận</span>
+              </button>
+
+              {/* Excel Schedule Import */}
+              {onOpenMatchExcelImport && (
+                <button
+                  type="button"
+                  onClick={onOpenMatchExcelImport}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  title="Nhập toàn bộ lịch thi đấu từ tệp Excel (.xlsx, .xls, .csv)"
+                >
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Nhập Lịch Excel</span>
+                </button>
+              )}
+
+              {/* Download Excel Template */}
+              <button
+                type="button"
+                onClick={() => downloadMatchScheduleImportTemplateExcel(sports, config, teams)}
+                className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700 shadow-2xs"
+                title="Tải tệp mẫu Excel lịch thi đấu chuẩn (.xlsx)"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Mẫu Lịch (.xlsx)</span>
               </button>
             </>
           ) : (
@@ -832,18 +924,41 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
           </select>
         </div>
 
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-slate-500 font-medium">Trạng thái:</span>
-          <select
-            value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
-            className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs"
-          >
-            <option value="ALL">Tất cả trạng thái</option>
-            <option value="LIVE">Đang thi đấu</option>
-            <option value="UPCOMING">Sắp diễn ra</option>
-            <option value="FINISHED">Đã kết thúc</option>
-          </select>
+        <div className="flex flex-wrap items-center gap-2">
+          {canManageSchedule && filteredMatches.length > 0 && (
+            <button
+              type="button"
+              onClick={handleToggleSelectAllMatches}
+              className="px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+              title={areAllFilteredMatchesSelected ? 'Bỏ chọn các trận' : 'Chọn toàn bộ trận trong danh sách lọc'}
+            >
+              {areAllFilteredMatchesSelected ? (
+                <>
+                  <CheckSquare className="w-3.5 h-3.5 text-sky-600" />
+                  <span>Bỏ chọn</span>
+                </>
+              ) : (
+                <>
+                  <Square className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Chọn tất cả ({filteredMatches.length})</span>
+                </>
+              )}
+            </button>
+          )}
+
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-slate-500 font-medium">Trạng thái:</span>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="px-2.5 py-1.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs"
+            >
+              <option value="ALL">Tất cả trạng thái</option>
+              <option value="LIVE">Đang thi đấu</option>
+              <option value="UPCOMING">Sắp diễn ra</option>
+              <option value="FINISHED">Đã kết thúc</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -944,6 +1059,15 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
                 {/* Match Header */}
                 <div className="flex flex-wrap items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 gap-2">
                   <div className="flex items-center gap-2">
+                    {canManageSchedule && (
+                      <input
+                        type="checkbox"
+                        checked={selectedMatchIds.includes(m.id)}
+                        onChange={() => handleToggleMatchSelect(m.id)}
+                        className="w-4 h-4 rounded text-sky-600 focus:ring-sky-500 cursor-pointer mr-0.5"
+                        title="Chọn trận đấu này để xóa hoặc xử lý hàng loạt"
+                      />
+                    )}
                     <span className="px-2.5 py-1 bg-sky-600 text-white font-bold rounded-lg text-xs">
                       {m.code}
                     </span>
@@ -1464,6 +1588,155 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Floating Bulk Action Bar */}
+      {selectedMatchIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 dark:bg-slate-800/95 backdrop-blur-md text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700 flex flex-wrap items-center justify-between gap-4 max-w-2xl w-[92%] animate-in slide-in-from-bottom-5">
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 rounded-lg bg-sky-600 text-white font-extrabold text-xs flex items-center justify-center">
+              {selectedMatchIds.length}
+            </span>
+            <span className="text-xs font-bold">
+              Đã chọn {selectedMatchIds.length} / {filteredMatches.length} trận đấu
+            </span>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {canManageSchedule && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmBulkDeleteModalOpen(true)}
+                  className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Xóa {selectedMatchIds.length} Trận Đã Chọn</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmDeleteAllModalOpen(true)}
+                  className="px-3 py-1.5 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800/80 rounded-xl text-xs font-semibold transition cursor-pointer"
+                  title="Xóa toàn bộ các trận đấu của môn thể thao hiện tại"
+                >
+                  <span>Xóa Toàn Bộ Lịch</span>
+                </button>
+              </>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setSelectedMatchIds([])}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-semibold transition cursor-pointer"
+            >
+              Hủy chọn
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Bulk Delete Selected Matches */}
+      {isConfirmBulkDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 flex items-center justify-center mx-auto">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                Xác nhận xóa hàng loạt {selectedMatchIds.length} trận đấu?
+              </h3>
+              <p className="text-xs text-slate-500">
+                Thao tác này sẽ xóa vĩnh viễn các trận đấu đã chọn khỏi hệ thống giải đấu và đồng bộ hóa cơ sở dữ liệu.
+              </p>
+            </div>
+
+            {/* List of matches to delete preview */}
+            <div className="max-h-48 overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-2xl divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+              {matches
+                .filter((m) => selectedMatchIds.includes(m.id))
+                .map((m) => (
+                  <div key={m.id} className="p-2.5 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-sky-600 dark:text-sky-400">
+                        {m.code}
+                      </span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">
+                        {m.home.name} vs {m.away.name}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-400">
+                      {m.stage} {m.time ? `· ${m.time}` : ''}
+                    </span>
+                  </div>
+                ))}
+            </div>
+
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300">
+              ⚠️ <strong>Cảnh báo:</strong> Điểm số, set thắng, thẻ phạt và kết quả của các trận này sẽ bị xóa khỏi bảng xếp hạng giải đấu.
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsConfirmBulkDeleteModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteBulkDelete}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Xác Nhận Xóa {selectedMatchIds.length} Trận</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation Modal for Delete All Matches in Sport */}
+      {isConfirmDeleteAllModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-rose-200 dark:border-rose-900/80 p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6 text-rose-600" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                Xóa TOÀN BỘ lịch thi đấu môn {currentSport.name}?
+              </h3>
+              <p className="text-xs text-slate-500">
+                Toàn bộ các trận đấu của môn {currentSport.name} ({matches.filter((m) => !m.sportId || m.sportId === config.activeSportId).length} trận) sẽ bị xóa hoàn toàn khỏi hệ thống.
+              </p>
+            </div>
+
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 font-semibold">
+              ⚠️ Thao tác này không thể hoàn tác! Bạn có thể sử dụng lại tính năng &quot;Xếp Lịch & Tạo Vòng Đấu&quot; hoặc &quot;Nhập Lịch Excel&quot; để tạo lịch mới sau khi xóa.
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsConfirmDeleteAllModalOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteDeleteAll}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Xác Nhận Xóa Toàn Bộ</span>
+              </button>
             </div>
           </div>
         </div>
