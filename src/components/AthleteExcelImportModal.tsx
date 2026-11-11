@@ -35,7 +35,12 @@ interface AthleteExcelImportModalProps {
   onClose: () => void;
   teams: Team[];
   initialTeamFilter?: string;
-  onConfirmImport: (importedAthletes: Athlete[]) => void;
+  existingAthletesCount?: number;
+  onConfirmImport: (
+    importedAthletes: Athlete[],
+    cleanMode?: 'none' | 'all' | 'target_teams'
+  ) => void;
+  onClearAllAthletes?: () => void;
 }
 
 export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = ({
@@ -43,11 +48,17 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
   onClose,
   teams,
   initialTeamFilter,
+  existingAthletesCount = 0,
   onConfirmImport,
+  onClearAllAthletes,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeInputTab, setActiveInputTab] = useState<'file' | 'paste'>('file');
   const [pastedText, setPastedText] = useState('');
+
+  // Clean data before import options: 'none' (merge/append), 'target_teams' (wipe athletes of target teams), 'all' (wipe all athletes)
+  const [cleanMode, setCleanMode] = useState<'none' | 'all' | 'target_teams'>('none');
+  const [showConfirmWipeModal, setShowConfirmWipeModal] = useState(false);
 
   const [file, setFile] = useState<File | null>(null);
   const [availableSheets, setAvailableSheets] = useState<string[]>([]);
@@ -344,7 +355,7 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
         });
       }
 
-      onConfirmImport(finalAthletes);
+      onConfirmImport(finalAthletes, cleanMode);
       onClose();
     } catch (err: unknown) {
       console.error('Error confirming athletes import:', err);
@@ -467,6 +478,102 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
               <Download className="w-3.5 h-3.5" />
               <span>Tải Mẫu VĐV (.xlsx)</span>
             </button>
+          </div>
+
+          {/* Chế độ làm sạch dữ liệu cũ để nhập mới */}
+          <div className="p-4 bg-amber-50/80 dark:bg-amber-950/40 rounded-2xl border border-amber-200/90 dark:border-amber-800/80 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs font-extrabold text-amber-900 dark:text-amber-200">
+                <RefreshCw className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>Chế độ làm sạch dữ liệu để nhập mới:</span>
+              </div>
+              {onClearAllAthletes && existingAthletesCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmWipeModal(true)}
+                  className="text-[11px] font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300 hover:underline flex items-center gap-1 cursor-pointer"
+                  title="Xóa trắng toàn bộ dữ liệu VĐV cũ ngay lập tức"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Xóa sạch ngay {existingAthletesCount} VĐV hiện có</span>
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+              <label
+                className={`flex items-start gap-2 p-2.5 rounded-xl border transition cursor-pointer ${
+                  cleanMode === 'none'
+                    ? 'bg-white dark:bg-slate-900 border-indigo-500 ring-2 ring-indigo-500/20 text-slate-900 dark:text-white'
+                    : 'bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="athleteCleanMode"
+                  value="none"
+                  checked={cleanMode === 'none'}
+                  onChange={() => setCleanMode('none')}
+                  className="mt-0.5 text-indigo-600 focus:ring-indigo-500"
+                />
+                <div>
+                  <strong className="block font-bold">Gộp dữ liệu (Append)</strong>
+                  <span className="text-[11px] text-slate-500 leading-tight block mt-0.5">
+                    Giữ nguyên VĐV hiện có, chỉ bổ sung thêm các VĐV từ file.
+                  </span>
+                </div>
+              </label>
+
+              <label
+                className={`flex items-start gap-2 p-2.5 rounded-xl border transition cursor-pointer ${
+                  cleanMode === 'target_teams'
+                    ? 'bg-white dark:bg-slate-900 border-amber-500 ring-2 ring-amber-500/20 text-slate-900 dark:text-white'
+                    : 'bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="athleteCleanMode"
+                  value="target_teams"
+                  checked={cleanMode === 'target_teams'}
+                  onChange={() => setCleanMode('target_teams')}
+                  className="mt-0.5 text-amber-600 focus:ring-amber-500"
+                />
+                <div>
+                  <strong className="block font-bold text-amber-700 dark:text-amber-300">
+                    Làm sạch theo đội
+                  </strong>
+                  <span className="text-[11px] text-slate-500 leading-tight block mt-0.5">
+                    Chỉ xóa VĐV cũ của các đội có trong file Excel tải lên.
+                  </span>
+                </div>
+              </label>
+
+              <label
+                className={`flex items-start gap-2 p-2.5 rounded-xl border transition cursor-pointer ${
+                  cleanMode === 'all'
+                    ? 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-500 ring-2 ring-rose-500/20 text-rose-900 dark:text-rose-200'
+                    : 'bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="athleteCleanMode"
+                  value="all"
+                  checked={cleanMode === 'all'}
+                  onChange={() => setCleanMode('all')}
+                  className="mt-0.5 text-rose-600 focus:ring-rose-500"
+                />
+                <div>
+                  <strong className="block font-bold text-rose-700 dark:text-rose-300">
+                    Làm sạch toàn bộ (Mới)
+                  </strong>
+                  <span className="text-[11px] text-slate-500 leading-tight block mt-0.5">
+                    Xóa sạch toàn bộ VĐV cũ của giải đấu để nhập mới từ đầu.
+                  </span>
+                </div>
+              </label>
+            </div>
           </div>
 
           {/* When NO data is loaded yet: Show Upload Options */}
@@ -858,14 +965,81 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
               type="button"
               onClick={handleFinalConfirm}
               disabled={previewAthletes.length === 0 || selectedIds.size === 0 || isLoading}
-              className="px-5 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
+              className={`px-5 py-2 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer ${
+                cleanMode === 'all'
+                  ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20'
+                  : cleanMode === 'target_teams'
+                  ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20'
+                  : 'bg-indigo-600 hover:bg-indigo-500'
+              }`}
             >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Xác Nhận Nhập VĐV ({selectedIds.size})</span>
+              {cleanMode === 'all' ? (
+                <>
+                  <Trash2 className="w-4 h-4" />
+                  <span>Làm Sạch Toàn Bộ & Nhập Mới ({selectedIds.size}) VĐV</span>
+                </>
+              ) : cleanMode === 'target_teams' ? (
+                <>
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Làm Sạch Theo Đội & Nhập ({selectedIds.size}) VĐV</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Xác Nhận Nhập VĐV ({selectedIds.size})</span>
+                </>
+              )}
             </button>
           </div>
         </div>
       </div>
+
+      {/* Confirmation Modal: Instant Wipe All Existing Athletes */}
+      {showConfirmWipeModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-rose-200 dark:border-rose-900/80 p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6 text-rose-600" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                Xác nhận làm sạch toàn bộ dữ liệu VĐV?
+              </h3>
+              <p className="text-xs text-slate-500">
+                Toàn bộ <strong>{existingAthletesCount}</strong> vận động viên hiện có trong giải đấu sẽ bị xóa sạch khỏi hệ thống và đồng bộ cơ sở dữ liệu để bạn có thể nhập mới hoàn toàn.
+              </p>
+            </div>
+
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 font-semibold">
+              ⚠️ Thao tác này không thể hoàn tác. Danh sách các đội bóng vẫn được giữ nguyên.
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowConfirmWipeModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onClearAllAthletes) {
+                    onClearAllAthletes();
+                  }
+                  setShowConfirmWipeModal(false);
+                }}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Xác Nhận Làm Sạch Ngay</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

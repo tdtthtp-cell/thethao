@@ -11,6 +11,7 @@ import {
   Filter,
   Trash2,
   Layers,
+  RefreshCw,
 } from 'lucide-react';
 import { Team, TeamGender, TournamentConfig } from '../types';
 import {
@@ -25,7 +26,9 @@ interface TeamExcelImportModalProps {
   onClose: () => void;
   config: TournamentConfig;
   existingTeams: Team[];
-  onImportTeams: (newTeams: Team[], newGroupsToAdd?: string[]) => void;
+  existingTeamsCount?: number;
+  onClearAllTeams?: () => void;
+  onImportTeams: (newTeams: Team[], newGroupsToAdd?: string[], cleanBeforeImport?: boolean) => void;
 }
 
 export const TeamExcelImportModal: React.FC<TeamExcelImportModalProps> = ({
@@ -33,6 +36,8 @@ export const TeamExcelImportModal: React.FC<TeamExcelImportModalProps> = ({
   onClose,
   config,
   existingTeams,
+  existingTeamsCount,
+  onClearAllTeams,
   onImportTeams,
 }) => {
   const fileInputId = useId();
@@ -45,6 +50,12 @@ export const TeamExcelImportModal: React.FC<TeamExcelImportModalProps> = ({
   const [genderFilter, setGenderFilter] = useState<'ALL' | TeamGender>('ALL');
   const [groupFilter, setGroupFilter] = useState('ALL');
   const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
+
+  // Clean data option: clean all existing teams and athletes before importing fresh teams
+  const [cleanBeforeImport, setCleanBeforeImport] = useState(false);
+  const [showConfirmWipeModal, setShowConfirmWipeModal] = useState(false);
+
+  const effectiveTeamsCount = existingTeamsCount !== undefined ? existingTeamsCount : existingTeams.length;
 
   if (!isOpen) return null;
 
@@ -140,7 +151,7 @@ export const TeamExcelImportModal: React.FC<TeamExcelImportModalProps> = ({
     }));
 
     const groupsToAdd = autoAddGroups && parseResult ? parseResult.newGroups : [];
-    onImportTeams(finalTeams, groupsToAdd);
+    onImportTeams(finalTeams, groupsToAdd, cleanBeforeImport);
     onClose();
   };
 
@@ -206,6 +217,75 @@ export const TeamExcelImportModal: React.FC<TeamExcelImportModalProps> = ({
               <Download className="w-3.5 h-3.5" />
               <span>Tải File Mẫu (.xlsx)</span>
             </button>
+          </div>
+
+          {/* Chế độ làm sạch dữ liệu đội bóng cũ để nhập mới */}
+          <div className="p-4 bg-amber-50/80 dark:bg-amber-950/40 rounded-2xl border border-amber-200/90 dark:border-amber-800/80 space-y-2.5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs font-extrabold text-amber-900 dark:text-amber-200">
+                <RefreshCw className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>Chế độ làm sạch dữ liệu đội bóng để nhập mới:</span>
+              </div>
+              {onClearAllTeams && effectiveTeamsCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmWipeModal(true)}
+                  className="text-[11px] font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300 hover:underline flex items-center gap-1 cursor-pointer"
+                  title="Xóa trắng toàn bộ danh sách đội và VĐV cũ ngay lập tức"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Xóa sạch ngay {effectiveTeamsCount} đội hiện có</span>
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <label
+                className={`flex items-start gap-2.5 p-3 rounded-xl border transition cursor-pointer ${
+                  !cleanBeforeImport
+                    ? 'bg-white dark:bg-slate-900 border-emerald-500 ring-2 ring-emerald-500/20 text-slate-900 dark:text-white'
+                    : 'bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="teamCleanMode"
+                  checked={!cleanBeforeImport}
+                  onChange={() => setCleanBeforeImport(false)}
+                  className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
+                />
+                <div>
+                  <strong className="block font-bold">Gộp vào danh sách hiện tại (Append)</strong>
+                  <span className="text-[11px] text-slate-500 leading-tight block mt-0.5">
+                    Giữ nguyên các đội hiện có, chỉ cập nhật hoặc bổ sung các đội từ file.
+                  </span>
+                </div>
+              </label>
+
+              <label
+                className={`flex items-start gap-2.5 p-3 rounded-xl border transition cursor-pointer ${
+                  cleanBeforeImport
+                    ? 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-500 ring-2 ring-rose-500/20 text-rose-900 dark:text-rose-200'
+                    : 'bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="teamCleanMode"
+                  checked={cleanBeforeImport}
+                  onChange={() => setCleanBeforeImport(true)}
+                  className="mt-0.5 text-rose-600 focus:ring-rose-500"
+                />
+                <div>
+                  <strong className="block font-bold text-rose-700 dark:text-rose-300">
+                    Làm sạch toàn bộ để nhập mới (Clean & Replace)
+                  </strong>
+                  <span className="text-[11px] text-slate-500 leading-tight block mt-0.5">
+                    Xóa sạch toàn bộ danh sách đội và VĐV cũ của giải đấu để thiết lập giải mới từ file.
+                  </span>
+                </div>
+              </label>
+            </div>
           </div>
 
           {/* Upload Dropzone */}
@@ -558,15 +638,75 @@ export const TeamExcelImportModal: React.FC<TeamExcelImportModalProps> = ({
                 type="button"
                 onClick={handleConfirmImport}
                 disabled={selectedRowIds.size === 0}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                className={`px-4 py-2 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer ${
+                  cleanBeforeImport
+                    ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20'
+                    : 'bg-emerald-600 hover:bg-emerald-500'
+                }`}
               >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Xác Nhận Nhập ({selectedRowIds.size} Đội)</span>
+                {cleanBeforeImport ? (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Làm Sạch & Nhập Mới ({selectedRowIds.size} Đội)</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Xác Nhận Nhập ({selectedRowIds.size} Đội)</span>
+                  </>
+                )}
               </button>
             )}
           </div>
         </div>
       </div>
+
+      {/* Confirmation Modal: Instant Wipe All Existing Teams & Athletes */}
+      {showConfirmWipeModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-rose-200 dark:border-rose-900/80 p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6 text-rose-600" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                Xác nhận làm sạch toàn bộ danh sách Đội bóng?
+              </h3>
+              <p className="text-xs text-slate-500">
+                Toàn bộ <strong>{effectiveTeamsCount}</strong> đội bóng cùng toàn bộ vận động viên thuộc các đội trong giải đấu sẽ bị xóa sạch khỏi hệ thống và cơ sở dữ liệu để bạn có thể tải lên danh sách mới hoàn toàn.
+              </p>
+            </div>
+
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 font-semibold">
+              ⚠️ Thao tác này không thể hoàn tác. Lịch thi đấu và cấu hình giải vẫn được giữ nguyên.
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowConfirmWipeModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onClearAllTeams) {
+                    onClearAllTeams();
+                  }
+                  setShowConfirmWipeModal(false);
+                }}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Xác Nhận Làm Sạch Ngay</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

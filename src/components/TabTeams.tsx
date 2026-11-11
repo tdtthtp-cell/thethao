@@ -45,7 +45,8 @@ interface TabTeamsProps {
   user: UserProfile;
   onOpenLogin?: () => void;
   onSaveTeam: (team: Team) => void;
-  onImportMultipleTeams?: (teams: Team[], newGroupsToAdd?: string[]) => void;
+  onImportMultipleTeams?: (teams: Team[], newGroupsToAdd?: string[], cleanBeforeImport?: boolean) => void;
+  onClearAllTeams?: () => void;
   onDeleteTeam: (teamId: string) => void;
   onDeleteMultipleTeams?: (teamIds: string[], deleteAthletesToo?: boolean) => void;
   onNavigateToAthletes: (teamIdOrName?: string) => void;
@@ -61,6 +62,7 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
   onOpenLogin,
   onSaveTeam,
   onImportMultipleTeams,
+  onClearAllTeams,
   onDeleteTeam,
   onDeleteMultipleTeams,
   onNavigateToAthletes,
@@ -1538,9 +1540,11 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
         onClose={() => setIsExcelImportModalOpen(false)}
         config={config}
         existingTeams={teams}
-        onImportTeams={(incomingTeams: Team[], newGroups?: string[]) => {
+        existingTeamsCount={teams.length}
+        onClearAllTeams={onClearAllTeams}
+        onImportTeams={(incomingTeams: Team[], newGroups?: string[], cleanBeforeImport?: boolean) => {
           if (onImportMultipleTeams) {
-            onImportMultipleTeams(incomingTeams, newGroups);
+            onImportMultipleTeams(incomingTeams, newGroups, cleanBeforeImport);
           }
         }}
       />

@@ -17,6 +17,7 @@ import {
   CheckSquare,
   Square,
   Plus,
+  RefreshCw,
 } from 'lucide-react';
 import { Match, Sport, Team, TournamentConfig, VenueConfig } from '../types';
 import {
@@ -35,6 +36,8 @@ interface MatchExcelImportModalProps {
   config: TournamentConfig;
   sports: Sport[];
   existingTeams: Team[];
+  existingMatchesCount?: number;
+  onClearAllMatches?: () => void;
   onImportMatches: (
     matches: Match[],
     newTeamsToCreate: Team[],
@@ -49,6 +52,8 @@ export const MatchExcelImportModal: React.FC<MatchExcelImportModalProps> = ({
   config,
   sports,
   existingTeams,
+  existingMatchesCount = 0,
+  onClearAllMatches,
   onImportMatches,
 }) => {
   const fileInputId = useId();
@@ -69,6 +74,7 @@ export const MatchExcelImportModal: React.FC<MatchExcelImportModalProps> = ({
   // Options
   const [importMode, setImportMode] = useState<'append' | 'replace'>('append');
   const [autoCreateNewTeams, setAutoCreateNewTeams] = useState(true);
+  const [showConfirmWipeModal, setShowConfirmWipeModal] = useState(false);
 
   // Filters for preview
   const [stageFilter, setStageFilter] = useState('ALL');
@@ -384,34 +390,76 @@ export const MatchExcelImportModal: React.FC<MatchExcelImportModalProps> = ({
         )}
 
         {/* Options Row */}
-        <div className="p-3.5 bg-slate-50 dark:bg-slate-950/70 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
-          <div className="flex items-center gap-3">
-            <span className="font-bold text-slate-700 dark:text-slate-300">Chế độ nhập:</span>
-            <label className="flex items-center gap-1.5 cursor-pointer text-slate-700 dark:text-slate-300">
+        <div className="p-3.5 bg-amber-50/70 dark:bg-amber-950/30 rounded-2xl border border-amber-200/80 dark:border-amber-800/70 space-y-2.5 text-xs shrink-0">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 font-extrabold text-amber-900 dark:text-amber-200">
+              <RefreshCw className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+              <span>Chế độ làm sạch dữ liệu lịch thi đấu để nhập mới:</span>
+            </div>
+            {onClearAllMatches && existingMatchesCount > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowConfirmWipeModal(true)}
+                className="text-[11px] font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300 hover:underline flex items-center gap-1 cursor-pointer"
+                title="Xóa sạch toàn bộ các trận đấu của môn hiện tại"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Xóa sạch ngay {existingMatchesCount} trận hiện có</span>
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label
+              className={`flex items-start gap-2.5 p-2.5 rounded-xl border transition cursor-pointer ${
+                importMode === 'append'
+                  ? 'bg-white dark:bg-slate-900 border-emerald-500 ring-2 ring-emerald-500/20 text-slate-900 dark:text-white'
+                  : 'bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+              }`}
+            >
               <input
                 type="radio"
                 name="importMode"
                 value="append"
                 checked={importMode === 'append'}
                 onChange={() => setImportMode('append')}
-                className="text-emerald-600 focus:ring-emerald-500"
+                className="mt-0.5 text-emerald-600 focus:ring-emerald-500"
               />
-              <span>Thêm vào lịch hiện tại (Append)</span>
+              <div>
+                <strong className="block font-bold">Thêm vào lịch hiện tại (Append)</strong>
+                <span className="text-[11px] text-slate-500 leading-tight block mt-0.5">
+                  Giữ nguyên các trận đấu đã xếp trước đó, chỉ thêm các trận mới từ file.
+                </span>
+              </div>
             </label>
-            <label className="flex items-center gap-1.5 cursor-pointer text-rose-600 dark:text-rose-400 font-semibold">
+
+            <label
+              className={`flex items-start gap-2.5 p-2.5 rounded-xl border transition cursor-pointer ${
+                importMode === 'replace'
+                  ? 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-500 ring-2 ring-rose-500/20 text-rose-900 dark:text-rose-200'
+                  : 'bg-white/60 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
+              }`}
+            >
               <input
                 type="radio"
                 name="importMode"
                 value="replace"
                 checked={importMode === 'replace'}
                 onChange={() => setImportMode('replace')}
-                className="text-rose-600 focus:ring-rose-500"
+                className="mt-0.5 text-rose-600 focus:ring-rose-500"
               />
-              <span>Thay thế toàn bộ lịch thi đấu (Replace)</span>
+              <div>
+                <strong className="block font-bold text-rose-700 dark:text-rose-300">
+                  Làm sạch & thay thế toàn bộ lịch (Replace)
+                </strong>
+                <span className="text-[11px] text-slate-500 leading-tight block mt-0.5">
+                  Xóa bỏ lịch thi đấu cũ của môn này để áp dụng hoàn toàn lịch mới từ file Excel.
+                </span>
+              </div>
             </label>
           </div>
 
-          <label className="flex items-center gap-1.5 cursor-pointer text-slate-700 dark:text-slate-300 font-medium">
+          <label className="flex items-center gap-1.5 cursor-pointer text-slate-700 dark:text-slate-300 font-medium pt-1">
             <input
               type="checkbox"
               checked={autoCreateNewTeams}
@@ -632,16 +680,74 @@ export const MatchExcelImportModal: React.FC<MatchExcelImportModalProps> = ({
             type="button"
             onClick={handleConfirmImport}
             disabled={selectedMatches.length === 0}
-            className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-xs font-extrabold transition shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+            className={`px-5 py-2.5 rounded-xl text-xs font-extrabold transition shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed text-white ${
+              importMode === 'replace'
+                ? 'bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 shadow-rose-600/20'
+                : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500'
+            }`}
           >
-            <CheckCircle2 className="w-4 h-4" />
+            {importMode === 'replace' ? (
+              <Trash2 className="w-4 h-4" />
+            ) : (
+              <CheckCircle2 className="w-4 h-4" />
+            )}
             <span>
-              Xác Nhận Nhập {selectedMatches.length} Trận Đấu Vào Lịch
+              {importMode === 'replace'
+                ? `Làm Sạch Lịch Cũ & Nhập (${selectedMatches.length}) Trận`
+                : `Xác Nhận Nhập ${selectedMatches.length} Trận Đấu Vào Lịch`}
               {newTeamsToCreateList.length > 0 && autoCreateNewTeams ? ` (+${newTeamsToCreateList.length} Đội Mới)` : ''}
             </span>
           </button>
         </div>
       </div>
+
+      {/* Confirmation Modal: Instant Wipe All Matches for Current Sport */}
+      {showConfirmWipeModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/80 backdrop-blur-md p-4 animate-in fade-in">
+          <div className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-rose-200 dark:border-rose-900/80 p-6 space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-600 flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6 text-rose-600" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                Xác nhận làm sạch toàn bộ lịch thi đấu?
+              </h3>
+              <p className="text-xs text-slate-500">
+                Toàn bộ <strong>{existingMatchesCount}</strong> trận đấu hiện có của môn{' '}
+                <strong>{currentSport.name}</strong> sẽ bị xóa sạch khỏi hệ thống và cơ sở dữ liệu để bạn có thể tải lên lịch thi đấu mới hoàn toàn.
+              </p>
+            </div>
+
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/40 rounded-xl border border-rose-200 dark:border-rose-900/60 text-xs text-rose-700 dark:text-rose-300 font-semibold">
+              ⚠️ Thao tác này không thể hoàn tác. Danh sách các đội bóng và vận động viên vẫn được giữ nguyên.
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => setShowConfirmWipeModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onClearAllMatches) {
+                    onClearAllMatches();
+                  }
+                  setShowConfirmWipeModal(false);
+                }}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Xác Nhận Làm Sạch Ngay</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
