@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Athlete,
+  AuditAction,
+  AuditEntityType,
+  AuditLog,
   Match,
   NotificationItem,
   RankingCriterionConfig,
@@ -41,6 +44,8 @@ import {
   deleteMultipleMatchesFromFirestore,
   syncUserToFirestore,
   deleteUserFromFirestore,
+  syncAuditLogToFirestore,
+  clearAllAuditLogsFromFirestore,
 } from './services/firestoreSync';
 import { subscribeToSync, broadcastTournamentUpdate } from './services/notifications';
 import { playScoreChime } from './services/sound';
@@ -56,6 +61,7 @@ import { SportModal } from './components/SportModal';
 import { MatchEditModal } from './components/MatchEditModal';
 import { MatchMinutesModal } from './components/MatchMinutesModal';
 import { ReportsModal } from './components/ReportsModal';
+import { AuditLogModal } from './components/AuditLogModal';
 
 import { TabOverview } from './components/TabOverview';
 import { TabTeams } from './components/TabTeams';
@@ -77,6 +83,9 @@ export default function App() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [users, setUsers] = useState<UserAccount[]>(INITIAL_USER_ACCOUNTS);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
+    return loadTournamentState().auditLogs || [];
+  });
 
   // Navigation & session state
   const [activeTab, setActiveTab] = useState<string>('overview');
@@ -123,6 +132,7 @@ export default function App() {
 
   // Modals state
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [isAuditLogOpen, setIsAuditLogOpen] = useState(false);
   const [isNotifDrawerOpen, setIsNotifDrawerOpen] = useState(false);
   const [isAthleteModalOpen, setIsAthleteModalOpen] = useState(false);
   const [editingAthlete, setEditingAthlete] = useState<Athlete | null>(null);
@@ -138,8 +148,85 @@ export default function App() {
   const [isMatchExcelImportOpen, setIsMatchExcelImportOpen] = useState(false);
 
   const handleOpenAthleteExcelImport = (teamIdOrName?: string) => {
+    if (!currentUser || currentUser.role === 'viewer') {
+      setIsAuthOpen(true);
+      return;
+    }
     setAthleteExcelImportTeam(teamIdOrName);
     setIsAthleteExcelImportOpen(true);
+  };
+
+  // Helper: Format author signature and timestamp
+  const getAuthorStamp = useCallback(() => {
+    const authorName = currentUser.displayName
+      ? `${currentUser.displayName}${currentUser.title ? ` (${currentUser.title})` : ''}`
+      : currentUser.username
+      ? `${currentUser.username} (${currentUser.role})`
+      : 'Ban Quản Trị';
+    const now = new Date();
+    const nowFormatted =
+      now.toLocaleDateString('vi-VN') +
+      ' ' +
+      now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return {
+      authorName,
+      nowFormatted,
+      userRole: currentUser.role,
+      userId: currentUser.username || currentUser.email || 'user',
+    };
+  }, [currentUser]);
+
+  // Helper: Log audit trail to local state and Firestore
+  const logAuditAction = useCallback(
+    (
+      action: AuditAction,
+      entityType: AuditEntityType,
+      entityName: string | undefined,
+      description: string
+    ) => {
+      const { authorName, nowFormatted, userRole, userId } = getAuthorStamp();
+      const newLog: AuditLog = {
+        id: 'LOG_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+        timestamp: nowFormatted,
+        userId,
+        userName: authorName,
+        userRole,
+        action,
+        entityType,
+        entityName,
+        description,
+      };
+      setAuditLogs((prev) => [newLog, ...prev]);
+      syncAuditLogToFirestore(newLog);
+      broadcastTournamentUpdate('AUDIT_LOG_ADDED', newLog);
+      return { authorName, nowFormatted, newLog };
+    },
+    [getAuthorStamp]
+  );
+
+  // Helper: Enforce authentication on all management operations
+  const checkAuthOrPrompt = useCallback(() => {
+    if (!currentUser || currentUser.role === 'viewer') {
+      setIsAuthOpen(true);
+      return false;
+    }
+    return true;
+  }, [currentUser]);
+
+  // Handler: Clear all audit history (Admin only)
+  const handleClearAllAuditLogs = async () => {
+    if (!checkAuthOrPrompt()) return;
+    if (currentUser.role !== 'admin') {
+      alert('Chỉ Ban Quản Trị (Admin) mới có quyền xoá nhật ký thao tác!');
+      return;
+    }
+    const logIds = auditLogs.map((l) => l.id);
+    setAuditLogs([]);
+    try {
+      await clearAllAuditLogsFromFirestore(logIds);
+    } catch (err) {
+      console.error('Error clearing audit logs:', err);
+    }
   };
 
   // 1. Initial State Load
@@ -152,6 +239,7 @@ export default function App() {
     setMatches(loaded.matches);
     setUsers(loaded.users);
     setNotifications(loaded.notifications);
+    if (loaded.auditLogs) setAuditLogs(loaded.auditLogs);
     setInitialLoaded(true);
 
     // Dark mode check
@@ -186,6 +274,9 @@ export default function App() {
       onUsersChange: (remoteUsers) => {
         if (remoteUsers && remoteUsers.length > 0) setUsers(remoteUsers);
       },
+      onAuditLogsChange: (remoteLogs) => {
+        if (remoteLogs) setAuditLogs(remoteLogs);
+      },
       onSyncStatusChange: (status) => {
         setSyncStatus(status);
       },
@@ -207,8 +298,9 @@ export default function App() {
       matches,
       users,
       notifications,
+      auditLogs,
     });
-  }, [config, sports, teams, athletes, matches, users, notifications, initialLoaded]);
+  }, [config, sports, teams, athletes, matches, users, notifications, auditLogs, initialLoaded]);
 
   // 3. Multi-Tab Realtime Broadcast Synchronization
   useEffect(() => {
@@ -229,6 +321,9 @@ export default function App() {
       } else if (msg.type === 'NOTIFICATION_ADDED') {
         const item = msg.payload as NotificationItem;
         setNotifications((prev) => [item, ...prev]);
+      } else if (msg.type === 'AUDIT_LOG_ADDED') {
+        const item = msg.payload as AuditLog;
+        setAuditLogs((prev) => [item, ...prev]);
       }
     });
 
@@ -431,6 +526,8 @@ export default function App() {
   // Handlers for Match Schedule Generator
   const handleGenerateSchedule = useCallback(
     (customTeamsList?: Team[], startDate?: string, startHour: number = 8, intervalMinutes: number = 45) => {
+      if (!checkAuthOrPrompt()) return;
+
       const activeTeams = customTeamsList || teams;
       const effectiveTeams = [...activeTeams];
 
@@ -460,6 +557,7 @@ export default function App() {
         syncConfigToFirestore(updatedConfig);
       }
 
+      const { authorName, nowFormatted } = getAuthorStamp();
       const newGeneratedMatches: Match[] = [];
       let matchCount = 1;
       const baseDate = startDate || new Date().toISOString().slice(0, 10);
@@ -503,6 +601,10 @@ export default function App() {
               refereeName: config.referee,
               secretaryName: config.secretary,
               notes: `Vòng bảng ${grp} (${venueLabel})`,
+              createdBy: authorName,
+              createdAt: nowFormatted,
+              lastUpdatedBy: authorName,
+              lastUpdatedAt: nowFormatted,
             });
 
             matchCount++;
@@ -522,8 +624,15 @@ export default function App() {
       syncAllMatchesToFirestore(newGeneratedMatches);
       effectiveTeams.forEach((t) => syncTeamToFirestore(t));
       broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: newGeneratedMatches, teams: effectiveTeams });
+
+      logAuditAction(
+        'create',
+        'schedule',
+        `${newGeneratedMatches.length} trận đấu`,
+        `Tự động xếp lịch thi đấu vòng tròn ${newGeneratedMatches.length} trận cho ${sortedGroups.length} bảng/khối`
+      );
     },
-    [teams, config]
+    [teams, config, checkAuthOrPrompt, getAuthorStamp, logAuditAction]
   );
 
   const handleApplyMatchesBatch = (
@@ -531,15 +640,26 @@ export default function App() {
     appendMode: boolean,
     noticeMsg: string
   ) => {
+    if (!checkAuthOrPrompt()) return;
+
+    const { authorName, nowFormatted } = getAuthorStamp();
+    const stampedMatches = newGeneratedMatches.map((m) => ({
+      ...m,
+      createdBy: m.createdBy || authorName,
+      createdAt: m.createdAt || nowFormatted,
+      lastUpdatedBy: authorName,
+      lastUpdatedAt: nowFormatted,
+    }));
+
     let finalMatches: Match[];
     if (appendMode) {
-      finalMatches = [...matches, ...newGeneratedMatches];
+      finalMatches = [...matches, ...stampedMatches];
     } else {
-      finalMatches = newGeneratedMatches;
+      finalMatches = stampedMatches;
     }
 
     // Auto discover new groups and sync to config
-    const matchGroups = newGeneratedMatches.map((m) => m.stage).filter(Boolean);
+    const matchGroups = stampedMatches.map((m) => m.stage).filter(Boolean);
     const newGroups = matchGroups.filter((g) => !(config.customGroups || []).includes(g));
     if (newGroups.length > 0) {
       const updatedConfig = {
@@ -554,31 +674,97 @@ export default function App() {
     syncAllMatchesToFirestore(finalMatches);
     broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: finalMatches });
     playScoreChime();
+
+    logAuditAction(
+      'create',
+      'schedule',
+      `${stampedMatches.length} trận đấu`,
+      noticeMsg || `Áp dụng danh sách ${stampedMatches.length} trận đấu vào lịch thi đấu (${appendMode ? 'nối thêm' : 'tạo mới'})`
+    );
   };
 
   const handleReorderMatches = (reorderedMatches: Match[], noticeMsg?: string) => {
-    setMatches(reorderedMatches);
-    syncAllMatchesToFirestore(reorderedMatches);
-    broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: reorderedMatches });
+    if (!checkAuthOrPrompt()) return;
+
+    const { authorName, nowFormatted } = getAuthorStamp();
+    const stampedMatches = reorderedMatches.map((m) => ({
+      ...m,
+      lastUpdatedBy: authorName,
+      lastUpdatedAt: nowFormatted,
+    }));
+
+    setMatches(stampedMatches);
+    syncAllMatchesToFirestore(stampedMatches);
+    broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: stampedMatches });
     playScoreChime();
+
+    logAuditAction(
+      'reorder',
+      'schedule',
+      `${reorderedMatches.length} trận đấu`,
+      noticeMsg || `Đã thay đổi thứ tự các trận đấu trong lịch thi đấu`
+    );
   };
 
   // Handlers for Match updates
   const handleUpdateMatch = (updated: Match) => {
-    setMatches((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
-    syncMatchToFirestore(updated);
+    if (!checkAuthOrPrompt()) return;
+
+    const { authorName, nowFormatted } = getAuthorStamp();
+    const stampedMatch: Match = {
+      ...updated,
+      lastUpdatedBy: authorName,
+      lastUpdatedAt: nowFormatted,
+    };
+
+    const prevMatch = matches.find((m) => m.id === updated.id);
+    const isScoreChanged =
+      prevMatch && JSON.stringify(prevMatch.scores) !== JSON.stringify(updated.scores);
+
+    setMatches((prev) => prev.map((m) => (m.id === stampedMatch.id ? stampedMatch : m)));
+    syncMatchToFirestore(stampedMatch);
     broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', {
-      matches: matches.map((m) => (m.id === updated.id ? updated : m)),
+      matches: matches.map((m) => (m.id === stampedMatch.id ? stampedMatch : m)),
     });
+
+    logAuditAction(
+      isScoreChanged ? 'score' : 'update',
+      'match',
+      `${stampedMatch.code} (${stampedMatch.home.name} vs ${stampedMatch.away.name})`,
+      isScoreChanged
+        ? `Cập nhật điểm số/tỉ số trận ${stampedMatch.code}`
+        : `Chỉnh sửa thông tin lịch đấu/sân/thời gian trận ${stampedMatch.code}`
+    );
   };
 
   const handleAddMatch = (newM: Match) => {
-    setMatches((prev) => [...prev, newM]);
-    syncMatchToFirestore(newM);
-    broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: [...matches, newM] });
+    if (!checkAuthOrPrompt()) return;
+
+    const { authorName, nowFormatted } = getAuthorStamp();
+    const stampedMatch: Match = {
+      ...newM,
+      createdBy: newM.createdBy || authorName,
+      createdAt: newM.createdAt || nowFormatted,
+      lastUpdatedBy: authorName,
+      lastUpdatedAt: nowFormatted,
+    };
+
+    setMatches((prev) => [...prev, stampedMatch]);
+    syncMatchToFirestore(stampedMatch);
+    broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: [...matches, stampedMatch] });
+
+    logAuditAction(
+      'create',
+      'match',
+      `${stampedMatch.code} (${stampedMatch.home.name} vs ${stampedMatch.away.name})`,
+      `Thêm thủ công trận đấu ${stampedMatch.code}`
+    );
   };
 
   const handleDeleteMatch = async (matchId: string) => {
+    if (!checkAuthOrPrompt()) return;
+
+    const targetMatch = matches.find((m) => m.id === matchId);
     setMatches((prev) => {
       const next = prev.filter((m) => m.id !== matchId);
       broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: next });
@@ -589,10 +775,19 @@ export default function App() {
     } catch (err) {
       console.error('Error deleting match from Firestore:', err);
     }
+
+    logAuditAction(
+      'delete',
+      'match',
+      targetMatch ? `${targetMatch.code} (${targetMatch.home.name} vs ${targetMatch.away.name})` : matchId,
+      `Xoá trận đấu khỏi lịch thi đấu`
+    );
   };
 
   const handleDeleteMultipleMatches = async (matchIds: string[]) => {
+    if (!checkAuthOrPrompt()) return;
     if (!matchIds || matchIds.length === 0) return;
+
     const idSet = new Set(matchIds);
     setMatches((prev) => {
       const next = prev.filter((m) => !idSet.has(m.id));
@@ -604,6 +799,13 @@ export default function App() {
     } catch (err) {
       console.error('Error bulk deleting matches from Firestore:', err);
     }
+
+    logAuditAction(
+      'bulk_delete',
+      'match',
+      `${matchIds.length} trận đấu`,
+      `Xoá hàng loạt ${matchIds.length} trận đấu khỏi lịch thi đấu`
+    );
   };
 
   const handleImportMatchesFromExcel = (
@@ -612,12 +814,24 @@ export default function App() {
     replaceExisting: boolean,
     noticeMsg: string
   ) => {
-    // 1. If any new teams were auto-discovered in the Excel schedule, register them
+    if (!checkAuthOrPrompt()) return;
+
+    const { authorName, nowFormatted } = getAuthorStamp();
+
+    // 1. If any new teams were auto-discovered in the Excel schedule, register them with author stamp
     if (newTeamsToCreate && newTeamsToCreate.length > 0) {
+      const stampedNewTeams = newTeamsToCreate.map((t) => ({
+        ...t,
+        createdBy: t.createdBy || authorName,
+        createdAt: t.createdAt || nowFormatted,
+        lastUpdatedBy: authorName,
+        lastUpdatedAt: nowFormatted,
+      }));
+
       setTeams((prev) => {
         const existingIds = new Set(prev.map((t) => t.id));
         const existingNames = new Set(prev.map((t) => t.name.toLowerCase()));
-        const teamsToAdd = newTeamsToCreate.filter(
+        const teamsToAdd = stampedNewTeams.filter(
           (t) => !existingIds.has(t.id) && !existingNames.has(t.name.toLowerCase())
         );
         const merged = [...prev, ...teamsToAdd];
@@ -628,7 +842,15 @@ export default function App() {
       });
     }
 
-    // 2. Set matches (replace or append)
+    // 2. Set matches with author stamp (replace or append)
+    const stampedMatches = newMatches.map((m) => ({
+      ...m,
+      createdBy: m.createdBy || authorName,
+      createdAt: m.createdAt || nowFormatted,
+      lastUpdatedBy: authorName,
+      lastUpdatedAt: nowFormatted,
+    }));
+
     setMatches((prev) => {
       let finalMatches: Match[];
       if (replaceExisting) {
@@ -636,16 +858,23 @@ export default function App() {
         const otherSportsMatches = prev.filter(
           (m) => m.sportId && m.sportId !== config.activeSportId
         );
-        finalMatches = [...otherSportsMatches, ...newMatches];
+        finalMatches = [...otherSportsMatches, ...stampedMatches];
       } else {
         const existingIds = new Set(prev.map((m) => m.id));
-        const uniqueNew = newMatches.filter((m) => !existingIds.has(m.id));
+        const uniqueNew = stampedMatches.filter((m) => !existingIds.has(m.id));
         finalMatches = [...prev, ...uniqueNew];
       }
       syncAllMatchesToFirestore(finalMatches);
       broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: finalMatches });
       return finalMatches;
     });
+
+    logAuditAction(
+      'import',
+      'schedule',
+      `${stampedMatches.length} trận đấu`,
+      noticeMsg || `Nhập ${stampedMatches.length} trận đấu từ file Excel (${replaceExisting ? 'thay thế' : 'nối tiếp'})`
+    );
 
     // Add smart notification
     const newNotif: NotificationItem = {
@@ -661,23 +890,35 @@ export default function App() {
 
   // Handlers for Athletes & Teams
   const handleSaveAthlete = async (ath: Athlete) => {
+    if (!checkAuthOrPrompt()) return;
+
+    const { authorName, nowFormatted } = getAuthorStamp();
+    const isExisting = athletes.some((a) => a.id === ath.id);
+    const stampedAthlete: Athlete = {
+      ...ath,
+      createdBy: ath.createdBy || authorName,
+      createdAt: ath.createdAt || nowFormatted,
+      lastUpdatedBy: authorName,
+      lastUpdatedAt: nowFormatted,
+    };
+
     setAthletes((prev) => {
-      const idx = prev.findIndex((a) => a.id === ath.id);
+      const idx = prev.findIndex((a) => a.id === stampedAthlete.id);
       if (idx >= 0) {
         const next = [...prev];
-        next[idx] = ath;
+        next[idx] = stampedAthlete;
         return next;
       }
-      return [ath, ...prev];
+      return [stampedAthlete, ...prev];
     });
 
     try {
-      await syncAthleteToFirestore(ath);
+      await syncAthleteToFirestore(stampedAthlete);
       const notif: NotificationItem = {
         id: 'N_' + Date.now(),
         type: 'system',
         title: 'Đã lưu vận động viên vào CSDL',
-        message: `VĐV ${ath.name} (#${ath.jerseyNumber} - ${ath.teamName}) đã được đồng bộ vào cơ sở dữ liệu đám mây.`,
+        message: `VĐV ${stampedAthlete.name} (#${stampedAthlete.jerseyNumber} - ${stampedAthlete.teamName}) đã được đồng bộ vào cơ sở dữ liệu đám mây.`,
         timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
         read: false,
       };
@@ -686,28 +927,66 @@ export default function App() {
       console.error('Lỗi khi lưu VĐV vào Firestore:', err);
     }
 
-    broadcastTournamentUpdate('ATHLETES_UPDATED', { athleteId: ath.id });
+    broadcastTournamentUpdate('ATHLETES_UPDATED', { athleteId: stampedAthlete.id });
+
+    logAuditAction(
+      isExisting ? 'update' : 'create',
+      'athlete',
+      `${stampedAthlete.name} (#${stampedAthlete.jerseyNumber} - ${stampedAthlete.teamName})`,
+      isExisting
+        ? `Cập nhật thông tin VĐV ${stampedAthlete.name} (Đội ${stampedAthlete.teamName})`
+        : `Đăng ký mới VĐV ${stampedAthlete.name} vào đội ${stampedAthlete.teamName}`
+    );
   };
 
   const handleDeleteAthlete = (athleteId: string) => {
+    if (!checkAuthOrPrompt()) return;
+
+    const targetAth = athletes.find((a) => a.id === athleteId);
     if (!confirm('Bạn có chắc chắn muốn xóa hồ sơ vận động viên này?')) return;
     setAthletes((prev) => prev.filter((a) => a.id !== athleteId));
     deleteAthleteFromFirestore(athleteId);
     broadcastTournamentUpdate('ATHLETES_UPDATED', { deletedId: athleteId });
+
+    logAuditAction(
+      'delete',
+      'athlete',
+      targetAth ? `${targetAth.name} (#${targetAth.jerseyNumber} - ${targetAth.teamName})` : athleteId,
+      `Xoá hồ sơ vận động viên khỏi hệ thống`
+    );
   };
 
   const handleDeleteMultipleAthletes = (athleteIds: string[]) => {
+    if (!checkAuthOrPrompt()) return;
     if (athleteIds.length === 0) return;
+
     setAthletes((prev) => prev.filter((a) => !athleteIds.includes(a.id)));
     deleteMultipleAthletesFromFirestore(athleteIds);
     broadcastTournamentUpdate('ATHLETES_UPDATED', { deletedCount: athleteIds.length });
+
+    logAuditAction(
+      'bulk_delete',
+      'athlete',
+      `${athleteIds.length} VĐV`,
+      `Xoá hàng loạt ${athleteIds.length} vận động viên khỏi hệ thống`
+    );
   };
 
   const handleApproveAthlete = (athleteId: string, status: Athlete['status']) => {
+    if (!checkAuthOrPrompt()) return;
+
+    const { authorName, nowFormatted } = getAuthorStamp();
+    const targetAth = athletes.find((a) => a.id === athleteId);
+
     setAthletes((prev) =>
       prev.map((a) => {
         if (a.id === athleteId) {
-          const updated = { ...a, status };
+          const updated: Athlete = {
+            ...a,
+            status,
+            lastUpdatedBy: authorName,
+            lastUpdatedAt: nowFormatted,
+          };
           syncAthleteToFirestore(updated);
           return updated;
         }
@@ -715,15 +994,31 @@ export default function App() {
       })
     );
     broadcastTournamentUpdate('ATHLETES_UPDATED', { athleteId, status });
+
+    logAuditAction(
+      'approve',
+      'athlete',
+      targetAth ? `${targetAth.name} (${targetAth.teamName})` : athleteId,
+      `Duyệt hồ sơ VĐV sang trạng thái "${status === 'approved' ? 'Đã duyệt' : status === 'needs_revision' ? 'Yêu cầu sửa' : 'Chờ duyệt'}"`
+    );
   };
 
   const handleApproveMultipleAthletes = (athleteIds: string[], status: Athlete['status']) => {
+    if (!checkAuthOrPrompt()) return;
     if (athleteIds.length === 0) return;
+
+    const { authorName, nowFormatted } = getAuthorStamp();
     const idSet = new Set(athleteIds);
+
     setAthletes((prev) =>
       prev.map((a) => {
         if (idSet.has(a.id)) {
-          const updated = { ...a, status };
+          const updated: Athlete = {
+            ...a,
+            status,
+            lastUpdatedBy: authorName,
+            lastUpdatedAt: nowFormatted,
+          };
           syncAthleteToFirestore(updated);
           return updated;
         }
@@ -731,10 +1026,19 @@ export default function App() {
       })
     );
     broadcastTournamentUpdate('ATHLETES_UPDATED', { updatedCount: athleteIds.length, status });
+
+    logAuditAction(
+      'approve',
+      'athlete',
+      `${athleteIds.length} VĐV`,
+      `Duyệt hàng loạt ${athleteIds.length} VĐV sang trạng thái "${status === 'approved' ? 'Đã duyệt' : status === 'needs_revision' ? 'Yêu cầu sửa' : 'Chờ duyệt'}"`
+    );
   };
 
   const handleClearAllAthletes = async () => {
+    if (!checkAuthOrPrompt()) return;
     if (athletes.length === 0) return;
+
     const oldIds = athletes.map((a) => a.id);
     setAthletes([]);
     try {
@@ -743,6 +1047,14 @@ export default function App() {
       console.error('Error wiping athletes:', err);
     }
     broadcastTournamentUpdate('ATHLETES_UPDATED', { clearedCount: oldIds.length });
+
+    logAuditAction(
+      'clear',
+      'athlete',
+      `Toàn bộ ${oldIds.length} VĐV`,
+      `Đã làm sạch toàn bộ danh sách vận động viên khỏi hệ thống và CSDL đám mây`
+    );
+
     const notif: NotificationItem = {
       id: 'N_' + Date.now(),
       type: 'system',
@@ -755,7 +1067,9 @@ export default function App() {
   };
 
   const handleClearAllTeams = async () => {
+    if (!checkAuthOrPrompt()) return;
     if (teams.length === 0) return;
+
     const teamIds = teams.map((t) => t.id);
     const athleteIds = athletes.map((a) => a.id);
     setTeams([]);
@@ -769,6 +1083,14 @@ export default function App() {
       console.error('Error wiping teams & athletes:', err);
     }
     broadcastTournamentUpdate('TEAMS_UPDATED', { clearedCount: teamIds.length });
+
+    logAuditAction(
+      'clear',
+      'team',
+      `Toàn bộ ${teamIds.length} đội`,
+      `Đã làm sạch toàn bộ danh sách đội bóng và các VĐV liên quan`
+    );
+
     const notif: NotificationItem = {
       id: 'N_' + Date.now(),
       type: 'system',
@@ -781,6 +1103,8 @@ export default function App() {
   };
 
   const handleClearAllMatches = async () => {
+    if (!checkAuthOrPrompt()) return;
+
     const targetMatches = matches.filter(
       (m) => !m.sportId || m.sportId === config.activeSportId
     );
@@ -796,6 +1120,14 @@ export default function App() {
       console.error('Error wiping matches:', err);
     }
     broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: remainingMatches });
+
+    logAuditAction(
+      'clear',
+      'schedule',
+      `Toàn bộ ${targetIds.length} trận đấu`,
+      `Đã làm sạch toàn bộ lịch thi đấu của môn hiện tại`
+    );
+
     const notif: NotificationItem = {
       id: 'N_' + Date.now(),
       type: 'system',
@@ -811,7 +1143,10 @@ export default function App() {
     incomingAthletes: Athlete[],
     cleanMode: 'none' | 'all' | 'target_teams' = 'none'
   ) => {
+    if (!checkAuthOrPrompt()) return;
     if (incomingAthletes.length === 0) return;
+
+    const { authorName, nowFormatted } = getAuthorStamp();
 
     // 1. Identify any new teams or groups present in the incoming athletes
     const existingTeamNames = new Set(teams.map((t) => t.name.toLowerCase()));
@@ -840,6 +1175,10 @@ export default function App() {
           color: group.toLowerCase().includes('nữ') ? '#e11d48' : '#0284c7',
           coachName: 'Giáo viên phụ trách',
           contactPhone: '',
+          createdBy: authorName,
+          createdAt: nowFormatted,
+          lastUpdatedBy: authorName,
+          lastUpdatedAt: nowFormatted,
         });
       }
     });
@@ -858,6 +1197,15 @@ export default function App() {
       }
     }
 
+    // Stamp incoming athletes with author signature
+    const stampedIncomingAthletes = incomingAthletes.map((a) => ({
+      ...a,
+      createdBy: a.createdBy || authorName,
+      createdAt: a.createdAt || nowFormatted,
+      lastUpdatedBy: authorName,
+      lastUpdatedAt: nowFormatted,
+    }));
+
     // 2. Handle clean modes before saving incoming athletes
     let finalAthletes: Athlete[];
     if (cleanMode === 'all') {
@@ -867,12 +1215,12 @@ export default function App() {
           console.error('Lỗi khi xóa VĐV cũ:', err)
         );
       }
-      finalAthletes = incomingAthletes;
+      finalAthletes = stampedIncomingAthletes;
     } else if (cleanMode === 'target_teams') {
       const importedTeamNames = new Set(
-        incomingAthletes.map((a) => (a.teamName || '').trim().toLowerCase())
+        stampedIncomingAthletes.map((a) => (a.teamName || '').trim().toLowerCase())
       );
-      const importedTeamIds = new Set(incomingAthletes.map((a) => a.teamId));
+      const importedTeamIds = new Set(stampedIncomingAthletes.map((a) => a.teamId));
 
       const athletesToDelete = athletes.filter(
         (a) =>
@@ -888,17 +1236,26 @@ export default function App() {
 
       const toDeleteSet = new Set(toDeleteIds);
       const remaining = athletes.filter((a) => !toDeleteSet.has(a.id));
-      finalAthletes = [...remaining, ...incomingAthletes];
+      finalAthletes = [...remaining, ...stampedIncomingAthletes];
     } else {
       // Append / Merge
       const existingMap = new Map(athletes.map((a) => [a.id, a]));
-      incomingAthletes.forEach((a) => existingMap.set(a.id, a));
+      stampedIncomingAthletes.forEach((a) => existingMap.set(a.id, a));
       finalAthletes = Array.from(existingMap.values());
     }
 
     setAthletes(finalAthletes);
-    syncMultipleAthletesToFirestore(incomingAthletes);
-    broadcastTournamentUpdate('ATHLETES_UPDATED', { importedCount: incomingAthletes.length });
+    syncMultipleAthletesToFirestore(stampedIncomingAthletes);
+    broadcastTournamentUpdate('ATHLETES_UPDATED', { importedCount: stampedIncomingAthletes.length });
+
+    logAuditAction(
+      'import',
+      'athlete',
+      `${stampedIncomingAthletes.length} VĐV`,
+      `Nhập danh sách ${stampedIncomingAthletes.length} VĐV từ file Excel (chế độ: ${
+        cleanMode === 'all' ? 'làm sạch tất cả' : cleanMode === 'target_teams' ? 'làm sạch đội liên quan' : 'nối tiếp'
+      })`
+    );
 
     const cleanModeLabel =
       cleanMode === 'all'
@@ -911,7 +1268,7 @@ export default function App() {
       id: 'N_' + Date.now(),
       type: 'system',
       title: 'Nhập danh sách VĐV từ Excel thành công',
-      message: `Đã nhập thành công ${incomingAthletes.length} vận động viên vào các đội${cleanModeLabel}${
+      message: `Đã nhập thành công ${stampedIncomingAthletes.length} vận động viên vào các đội${cleanModeLabel}${
         newTeamsToCreate.length > 0 ? ` (tự động tạo ${newTeamsToCreate.length} đội mới)` : ''
       }.`,
       timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
@@ -921,30 +1278,42 @@ export default function App() {
   };
 
   const handleSaveTeam = async (team: Team) => {
+    if (!checkAuthOrPrompt()) return;
+
+    const { authorName, nowFormatted } = getAuthorStamp();
+    const isExisting = teams.some((t) => t.id === team.id);
+    const stampedTeam: Team = {
+      ...team,
+      createdBy: team.createdBy || authorName,
+      createdAt: team.createdAt || nowFormatted,
+      lastUpdatedBy: authorName,
+      lastUpdatedAt: nowFormatted,
+    };
+
     setTeams((prev) => {
-      const idx = prev.findIndex((t) => t.id === team.id);
+      const idx = prev.findIndex((t) => t.id === stampedTeam.id);
       if (idx >= 0) {
         const next = [...prev];
-        next[idx] = team;
+        next[idx] = stampedTeam;
         return next;
       }
-      return [...prev, team];
+      return [...prev, stampedTeam];
     });
 
     // Check if new group
-    if (team.group && !config.customGroups.includes(team.group)) {
-      const updatedConfig = { ...config, customGroups: [...config.customGroups, team.group] };
+    if (stampedTeam.group && !config.customGroups.includes(stampedTeam.group)) {
+      const updatedConfig = { ...config, customGroups: [...config.customGroups, stampedTeam.group] };
       setConfig(updatedConfig);
       syncConfigToFirestore(updatedConfig);
     }
 
     try {
-      await syncTeamToFirestore(team);
+      await syncTeamToFirestore(stampedTeam);
       const notif: NotificationItem = {
         id: 'N_' + Date.now(),
         type: 'system',
         title: 'Đã lưu đội vào CSDL',
-        message: `Đội "${team.name}" (${team.group}) đã được đồng bộ vào cơ sở dữ liệu đám mây.`,
+        message: `Đội "${stampedTeam.name}" (${stampedTeam.group}) đã được đồng bộ vào cơ sở dữ liệu đám mây.`,
         timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
         read: false,
       };
@@ -953,7 +1322,14 @@ export default function App() {
       console.error('Lỗi khi lưu đội vào Firestore:', err);
     }
 
-    broadcastTournamentUpdate('TEAMS_UPDATED', { teamId: team.id });
+    broadcastTournamentUpdate('TEAMS_UPDATED', { teamId: stampedTeam.id });
+
+    logAuditAction(
+      isExisting ? 'update' : 'create',
+      'team',
+      stampedTeam.name,
+      isExisting ? `Cập nhật thông tin đội ${stampedTeam.name} (${stampedTeam.group})` : `Thêm mới đội ${stampedTeam.name} vào ${stampedTeam.group}`
+    );
   };
 
   const handleImportMultipleTeams = async (
@@ -961,7 +1337,10 @@ export default function App() {
     newGroupsToAdd?: string[],
     cleanBeforeImport = false
   ) => {
+    if (!checkAuthOrPrompt()) return;
     if (incomingTeams.length === 0) return;
+
+    const { authorName, nowFormatted } = getAuthorStamp();
 
     // 1. Update config if new groups discovered in Excel
     if (newGroupsToAdd && newGroupsToAdd.length > 0) {
@@ -970,6 +1349,14 @@ export default function App() {
       setConfig(newConfig);
       syncConfigToFirestore(newConfig);
     }
+
+    const stampedTeams = incomingTeams.map((t) => ({
+      ...t,
+      createdBy: t.createdBy || authorName,
+      createdAt: t.createdAt || nowFormatted,
+      lastUpdatedBy: authorName,
+      lastUpdatedAt: nowFormatted,
+    }));
 
     if (cleanBeforeImport) {
       // Wipe old teams and old athletes from Firestore
@@ -986,12 +1373,12 @@ export default function App() {
         );
       }
       setAthletes([]);
-      setTeams(incomingTeams);
+      setTeams(stampedTeams);
     } else {
       // Merge teams into state
       setTeams((prev) => {
         const next = [...prev];
-        incomingTeams.forEach((newT) => {
+        stampedTeams.forEach((newT) => {
           const existingIdx = next.findIndex(
             (t) =>
               t.id === newT.id ||
@@ -1010,19 +1397,28 @@ export default function App() {
     }
 
     // 3. Batch sync to Firestore
-    syncMultipleTeamsToFirestore(incomingTeams);
+    syncMultipleTeamsToFirestore(stampedTeams);
 
     // 4. Realtime broadcast notification
-    broadcastTournamentUpdate('TEAMS_UPDATED', { importedCount: incomingTeams.length });
+    broadcastTournamentUpdate('TEAMS_UPDATED', { importedCount: stampedTeams.length });
+
+    logAuditAction(
+      'import',
+      'team',
+      `${stampedTeams.length} đội`,
+      cleanBeforeImport
+        ? `Làm sạch dữ liệu và nhập mới ${stampedTeams.length} đội từ file Excel`
+        : `Nhập bổ sung ${stampedTeams.length} đội từ file Excel`
+    );
 
     // 5. In-app notification
-    const maleCount = incomingTeams.filter((t) => t.gender === 'male').length;
-    const femaleCount = incomingTeams.filter((t) => t.gender === 'female').length;
+    const maleCount = stampedTeams.filter((t) => t.gender === 'male').length;
+    const femaleCount = stampedTeams.filter((t) => t.gender === 'female').length;
     const notif: NotificationItem = {
       id: 'N_' + Date.now(),
       type: 'system',
       title: 'Nhập danh sách đội từ Excel thành công',
-      message: `Đã nhập thành công ${incomingTeams.length} đội (${maleCount} đội Nam, ${femaleCount} đội Nữ) theo bảng/khối${
+      message: `Đã nhập thành công ${stampedTeams.length} đội (${maleCount} đội Nam, ${femaleCount} đội Nữ) theo bảng/khối${
         cleanBeforeImport ? ' (đã làm sạch toàn bộ danh sách đội và VĐV cũ)' : ''
       }.`,
       timestamp: new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
@@ -1032,21 +1428,40 @@ export default function App() {
   };
 
   const handleDeleteTeam = (teamId: string) => {
+    if (!checkAuthOrPrompt()) return;
+
+    const targetTeam = teams.find((t) => t.id === teamId);
     if (!confirm('Bạn có chắc muốn xóa đội này cùng các VĐV liên quan?')) return;
     setTeams((prev) => prev.filter((t) => t.id !== teamId));
     setAthletes((prev) => prev.filter((a) => a.teamId !== teamId));
     deleteTeamFromFirestore(teamId, true, athletes);
     broadcastTournamentUpdate('TEAMS_UPDATED', { deletedTeamId: teamId });
+
+    logAuditAction(
+      'delete',
+      'team',
+      targetTeam?.name || teamId,
+      `Xoá đội ${targetTeam?.name || teamId} và các vận động viên liên quan`
+    );
   };
 
   const handleDeleteMultipleTeams = (teamIds: string[], deleteAthletesToo = true) => {
+    if (!checkAuthOrPrompt()) return;
     if (teamIds.length === 0) return;
+
     setTeams((prev) => prev.filter((t) => !teamIds.includes(t.id)));
     if (deleteAthletesToo) {
       setAthletes((prev) => prev.filter((a) => !teamIds.includes(a.teamId)));
     }
     deleteMultipleTeamsFromFirestore(teamIds, deleteAthletesToo, athletes);
     broadcastTournamentUpdate('TEAMS_UPDATED', { deletedCount: teamIds.length });
+
+    logAuditAction(
+      'bulk_delete',
+      'team',
+      `${teamIds.length} đội`,
+      `Xoá hàng loạt ${teamIds.length} đội bóng`
+    );
   };
 
   // Handlers for Sports
@@ -1152,6 +1567,8 @@ export default function App() {
         onTabChange={handleTabChange}
         onOpenReports={() => setIsReportsModalOpen(true)}
         onOpenAuth={() => setIsAuthOpen(true)}
+        onOpenAuditLogs={() => setIsAuditLogOpen(true)}
+        auditLogsCount={auditLogs.length}
         onOpenNotifications={() => setIsNotifDrawerOpen(true)}
         unreadNotificationsCount={unreadNotifCount}
         isDark={isDark}
@@ -1285,6 +1702,7 @@ export default function App() {
               user={currentUser}
               standingsByGroup={standingsByGroup}
               onNavigateTab={setActiveTab}
+              onOpenLogin={() => setIsAuthOpen(true)}
               onUpdateMatch={handleUpdateMatch}
               onAddMatch={handleAddMatch}
               onDeleteMatch={handleDeleteMatch}
@@ -1487,6 +1905,8 @@ export default function App() {
         teams={teams}
         initialTeamFilter={athleteExcelImportTeam}
         existingAthletesCount={athletes.length}
+        user={currentUser}
+        onOpenLogin={() => setIsAuthOpen(true)}
         onConfirmImport={handleImportMultipleAthletes}
         onClearAllAthletes={handleClearAllAthletes}
       />
@@ -1501,6 +1921,15 @@ export default function App() {
         existingMatchesCount={matches.filter((m) => !m.sportId || m.sportId === config.activeSportId).length}
         onImportMatches={handleImportMatchesFromExcel}
         onClearAllMatches={handleClearAllMatches}
+      />
+
+      {/* 10. Audit History & Activity Logs Modal (Nhật ký truy vết thao tác) */}
+      <AuditLogModal
+        isOpen={isAuditLogOpen}
+        onClose={() => setIsAuditLogOpen(false)}
+        logs={auditLogs}
+        user={currentUser}
+        onClearLogs={handleClearAllAuditLogs}
       />
     </div>
   );

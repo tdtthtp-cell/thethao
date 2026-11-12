@@ -81,6 +81,14 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
   const [isAthleteImportModalOpen, setIsAthleteImportModalOpen] = useState(false);
 
   const handleOpenExcelImport = (targetTeamId?: string) => {
+    if (!canRegister) {
+      if (onOpenLogin) {
+        onOpenLogin();
+      } else {
+        alert('Vui lòng đăng nhập để sử dụng tính năng nhập VĐV từ file Excel.');
+      }
+      return;
+    }
     const effTeam = targetTeamId || (selectedTeamFilter !== 'ALL' ? selectedTeamFilter : undefined);
     if (targetTeamId) {
       setSelectedTeamFilter(targetTeamId);
@@ -320,16 +328,28 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
             </button>
           )}
 
-          {/* Always accessible: Import Athletes from Excel */}
-          <button
-            type="button"
-            onClick={() => handleOpenExcelImport()}
-            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-            title="Nhập danh sách VĐV của đội từ file Excel (.xlsx, .xls, .csv)"
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>Nhập VĐV Excel</span>
-          </button>
+          {/* Import Athletes from Excel */}
+          {canRegister ? (
+            <button
+              type="button"
+              onClick={() => handleOpenExcelImport()}
+              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="Nhập danh sách VĐV của đội từ file Excel (.xlsx, .xls, .csv)"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>Nhập VĐV Excel</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenLogin}
+              className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700"
+              title="Đăng nhập để nhập VĐV từ Excel"
+            >
+              <Lock className="w-3.5 h-3.5 text-slate-400" />
+              <span>Nhập VĐV Excel</span>
+            </button>
+          )}
 
           {/* Download Athlete Template */}
           <button
@@ -696,15 +716,27 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
 
                     {/* Team Header Actions */}
                     <div className="flex items-center gap-2 ml-auto">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenExcelImport(team.id)}
-                        className="px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200/80 dark:border-emerald-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                        title={`Nhập danh sách VĐV cho ${team.name} từ file Excel`}
-                      >
-                        <FileSpreadsheet className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Nhập Excel</span>
-                      </button>
+                      {canRegister ? (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenExcelImport(team.id)}
+                          className="px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200/80 dark:border-emerald-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                          title={`Nhập danh sách VĐV cho ${team.name} từ file Excel`}
+                        >
+                          <FileSpreadsheet className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Nhập Excel</span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => onOpenLogin?.()}
+                          className="px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                          title="Đăng nhập để nhập VĐV từ Excel"
+                        >
+                          <Lock className="w-3.5 h-3.5 text-slate-400" />
+                          <span className="hidden sm:inline">Nhập Excel</span>
+                        </button>
+                      )}
 
                       <button
                         type="button"
@@ -791,6 +823,11 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
                                       )}
                                     </div>
                                     <div className="text-[10px] text-slate-400">Sinh: {ath.dateOfBirth}</div>
+                                    {ath.lastUpdatedBy && (
+                                      <div className="text-[9px] text-slate-400 dark:text-slate-500 font-normal">
+                                        Bởi: {ath.lastUpdatedBy}
+                                      </div>
+                                    )}
                                   </td>
                                   <td className="p-3 text-slate-600 dark:text-slate-300">{ath.position}</td>
                                   <td className="p-3">
@@ -1001,6 +1038,11 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
                                     )}
                                   </div>
                                   <div className="text-[10px] text-slate-400">Sinh: {ath.dateOfBirth}</div>
+                                  {ath.lastUpdatedBy && (
+                                    <div className="text-[9px] text-slate-400 dark:text-slate-500 font-normal">
+                                      Bởi: {ath.lastUpdatedBy}
+                                    </div>
+                                  )}
                                 </td>
                                 <td className="p-3">
                                   <span className="font-bold text-slate-800 dark:text-slate-200">
@@ -1135,14 +1177,25 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
                           Vui lòng nhấn nút <strong>"Nhập VĐV Excel"</strong> hoặc <strong>"Đăng Ký VĐV"</strong> phía trên để thêm vận động viên vào đội. Hoặc chuyển sang tab <strong>Danh Sách Đội</strong> để tạo các lớp/đội trước.
                         </p>
                         <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenExcelImport()}
-                            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
-                          >
-                            <FileSpreadsheet className="w-3.5 h-3.5" />
-                            <span>Nhập VĐV Từ File Excel</span>
-                          </button>
+                          {canRegister ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenExcelImport()}
+                              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                            >
+                              <FileSpreadsheet className="w-3.5 h-3.5" />
+                              <span>Nhập VĐV Từ File Excel</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => onOpenLogin?.()}
+                              className="px-3.5 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs"
+                            >
+                              <Lock className="w-3.5 h-3.5" />
+                              <span>Đăng Nhập Để Nhập VĐV Excel</span>
+                            </button>
+                          )}
                           {onNavigateToTeams && (
                             <button
                               type="button"
@@ -1193,6 +1246,11 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
                             )}
                           </div>
                           <div className="text-[10px] text-slate-400">Sinh: {ath.dateOfBirth}</div>
+                          {ath.lastUpdatedBy && (
+                            <div className="text-[9px] text-slate-400 dark:text-slate-500 font-normal">
+                              Bởi: {ath.lastUpdatedBy}
+                            </div>
+                          )}
                         </td>
                         <td className="p-4">
                           <span className="font-bold text-slate-800 dark:text-slate-200">
@@ -1395,6 +1453,8 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
         onClose={() => setIsAthleteImportModalOpen(false)}
         teams={teams}
         initialTeamFilter={selectedTeamFilter}
+        user={user}
+        onOpenLogin={onOpenLogin}
         onConfirmImport={(imported) => {
           if (onImportMultipleAthletes) {
             onImportMultipleAthletes(imported);

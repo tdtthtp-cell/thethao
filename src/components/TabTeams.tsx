@@ -14,6 +14,7 @@ import {
   Square,
   AlertTriangle,
   LogIn,
+  Lock,
   ExternalLink,
   CheckCircle2,
   X,
@@ -319,30 +320,6 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {/* Excel Import for Teams */}
-          <button
-            type="button"
-            onClick={() => setIsExcelImportModalOpen(true)}
-            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-            title="Nhập danh sách các đội thi đấu trong giải từ file Excel (.xlsx, .xls, .csv)"
-          >
-            <FileSpreadsheet className="w-4 h-4" />
-            <span>Nhập Đội Excel</span>
-          </button>
-
-          {/* Excel Import for Athletes */}
-          {onOpenAthleteExcelImport && (
-            <button
-              type="button"
-              onClick={() => onOpenAthleteExcelImport()}
-              className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-              title="Nhập danh sách vận động viên vào các đội từ file Excel (.xlsx, .xls, .csv)"
-            >
-              <Users className="w-4 h-4" />
-              <span>Nhập VĐV Excel</span>
-            </button>
-          )}
-
           {/* Download Template */}
           <button
             type="button"
@@ -355,22 +332,49 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
           </button>
 
           {canManage ? (
-            <button
-              type="button"
-              onClick={handleOpenAddTeam}
-              className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Thêm Đội Mới</span>
-            </button>
+            <>
+              {/* Excel Import for Teams */}
+              <button
+                type="button"
+                onClick={() => setIsExcelImportModalOpen(true)}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                title="Nhập danh sách các đội thi đấu trong giải từ file Excel (.xlsx, .xls, .csv)"
+              >
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Nhập Đội Excel</span>
+              </button>
+
+              {/* Excel Import for Athletes */}
+              {onOpenAthleteExcelImport && (
+                <button
+                  type="button"
+                  onClick={() => onOpenAthleteExcelImport()}
+                  className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  title="Nhập danh sách vận động viên vào các đội từ file Excel (.xlsx, .xls, .csv)"
+                >
+                  <Users className="w-4 h-4" />
+                  <span>Nhập VĐV Excel</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleOpenAddTeam}
+                className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Thêm Đội Mới</span>
+              </button>
+            </>
           ) : (
             <button
               type="button"
               onClick={onOpenLogin}
               className="px-4 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="Đăng nhập để thêm, sửa, xoá đội bóng và nhập Excel"
             >
               <LogIn className="w-3.5 h-3.5" />
-              <span>Đăng Nhập</span>
+              <span>Đăng Nhập Để Quản Lý</span>
             </button>
           )}
 
@@ -386,6 +390,28 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Read-Only Notice Banner for Unauthenticated Viewers */}
+      {!canManage && (
+        <div className="p-3.5 bg-sky-50 dark:bg-sky-950/40 rounded-2xl border border-sky-200/80 dark:border-sky-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5 text-sky-900 dark:text-sky-200">
+            <Lock className="w-4 h-4 text-sky-600 shrink-0" />
+            <span>
+              <strong>Chế độ xem (Chỉ đọc)</strong>: Bạn chưa đăng nhập nên chỉ có quyền xem danh sách đội bóng. Vui lòng đăng nhập để thêm, sửa, xoá đội và nhập danh sách từ Excel.
+            </span>
+          </div>
+          {onOpenLogin && (
+            <button
+              type="button"
+              onClick={onOpenLogin}
+              className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-bold transition flex items-center gap-1.5 shrink-0 shadow-2xs cursor-pointer"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Đăng Nhập Ngay</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 2. Overview Metrics by Gender and Category */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
@@ -685,7 +711,7 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
             <p className="text-xs text-slate-500 leading-relaxed">
               Bạn có thể nhập danh sách các lớp (10A1, 10A2, 11B1...) trực tiếp từ file Excel hoặc nhấn Thêm Đội Mới.
             </p>
-            {canManage && (
+            {canManage ? (
               <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
                 <button
                   type="button"
@@ -702,6 +728,17 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
                 >
                   <Download className="w-4 h-4 text-emerald-600" />
                   <span>Tải File Mẫu (10A1, 10A2...)</span>
+                </button>
+              </div>
+            ) : (
+              <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+                <button
+                  type="button"
+                  onClick={onOpenLogin}
+                  className="px-4 py-2.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
+                >
+                  <LogIn className="w-4 h-4" />
+                  <span>Đăng Nhập Để Nhập Danh Sách Đội & VĐV</span>
                 </button>
               </div>
             )}
@@ -898,9 +935,16 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
                                           }}
                                           title={`Màu áo: ${team.color || 'Mặc định'}`}
                                         />
-                                        <span className="font-black text-sm text-slate-900 dark:text-white tracking-tight">
-                                          {team.name}
-                                        </span>
+                                        <div className="flex flex-col">
+                                          <span className="font-black text-sm text-slate-900 dark:text-white tracking-tight">
+                                            {team.name}
+                                          </span>
+                                          {team.lastUpdatedBy && (
+                                            <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">
+                                              Cập nhật: {team.lastUpdatedBy}
+                                            </span>
+                                          )}
+                                        </div>
                                       </div>
                                     </td>
                                     <td className="py-3 px-4">
@@ -941,9 +985,15 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
                                         {onOpenAthleteExcelImport && (
                                           <button
                                             type="button"
-                                            onClick={() => onOpenAthleteExcelImport(team.id)}
+                                            onClick={() => {
+                                              if (!canManage) {
+                                                onOpenLogin?.();
+                                                return;
+                                              }
+                                              onOpenAthleteExcelImport(team.id);
+                                            }}
                                             className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded-lg transition cursor-pointer"
-                                            title={`Nhập danh sách VĐV cho ${team.name} từ file Excel`}
+                                            title={canManage ? `Nhập danh sách VĐV cho ${team.name} từ file Excel` : 'Đăng nhập để nhập VĐV từ Excel'}
                                           >
                                             <FileSpreadsheet className="w-3.5 h-3.5" />
                                           </button>
@@ -1063,9 +1113,16 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
                                 team.color || (team.gender === 'female' ? '#e11d48' : '#0284c7'),
                             }}
                           />
-                          <span className="font-black text-sm text-slate-900 dark:text-white">
-                            {team.name}
-                          </span>
+                          <div className="flex flex-col">
+                            <span className="font-black text-sm text-slate-900 dark:text-white">
+                              {team.name}
+                            </span>
+                            {team.lastUpdatedBy && (
+                              <span className="text-[10px] text-slate-400 dark:text-slate-500 font-normal">
+                                Cập nhật: {team.lastUpdatedBy}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="py-3.5 px-4 font-semibold text-slate-700 dark:text-slate-300">
@@ -1108,9 +1165,15 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
                           {onOpenAthleteExcelImport && (
                             <button
                               type="button"
-                              onClick={() => onOpenAthleteExcelImport(team.id)}
+                              onClick={() => {
+                                if (!canManage) {
+                                  onOpenLogin?.();
+                                  return;
+                                }
+                                onOpenAthleteExcelImport(team.id);
+                              }}
                               className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded-lg transition cursor-pointer"
-                              title={`Nhập danh sách VĐV cho ${team.name} từ file Excel`}
+                              title={canManage ? `Nhập danh sách VĐV cho ${team.name} từ file Excel` : 'Đăng nhập để nhập VĐV từ Excel'}
                             >
                               <FileSpreadsheet className="w-3.5 h-3.5" />
                             </button>
@@ -1213,6 +1276,11 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
                           {team.coachName || 'Chưa cập nhật'}
                         </strong>
                       </p>
+                      {team.lastUpdatedBy && (
+                        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+                          Cập nhật: {team.lastUpdatedBy}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -1254,9 +1322,15 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
                     {onOpenAthleteExcelImport && (
                       <button
                         type="button"
-                        onClick={() => onOpenAthleteExcelImport(team.id)}
+                        onClick={() => {
+                          if (!canManage) {
+                            onOpenLogin?.();
+                            return;
+                          }
+                          onOpenAthleteExcelImport(team.id);
+                        }}
                         className="p-1.5 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded-lg transition cursor-pointer"
-                        title={`Nhập danh sách VĐV cho ${team.name} từ file Excel`}
+                        title={canManage ? `Nhập danh sách VĐV cho ${team.name} từ file Excel` : 'Đăng nhập để nhập VĐV từ Excel'}
                       >
                         <FileSpreadsheet className="w-3.5 h-3.5" />
                       </button>
@@ -1541,6 +1615,8 @@ export const TabTeams: React.FC<TabTeamsProps> = ({
         config={config}
         existingTeams={teams}
         existingTeamsCount={teams.length}
+        user={user}
+        onOpenLogin={onOpenLogin}
         onClearAllTeams={onClearAllTeams}
         onImportTeams={(incomingTeams: Team[], newGroups?: string[], cleanBeforeImport?: boolean) => {
           if (onImportMultipleTeams) {

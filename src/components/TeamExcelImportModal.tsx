@@ -12,8 +12,10 @@ import {
   Trash2,
   Layers,
   RefreshCw,
+  Lock,
+  LogIn,
 } from 'lucide-react';
-import { Team, TeamGender, TournamentConfig } from '../types';
+import { Team, TeamGender, TournamentConfig, UserProfile } from '../types';
 import {
   downloadTeamImportTemplateExcel,
   parseTeamsFromExcel,
@@ -27,6 +29,8 @@ interface TeamExcelImportModalProps {
   config: TournamentConfig;
   existingTeams: Team[];
   existingTeamsCount?: number;
+  user?: UserProfile;
+  onOpenLogin?: () => void;
   onClearAllTeams?: () => void;
   onImportTeams: (newTeams: Team[], newGroupsToAdd?: string[], cleanBeforeImport?: boolean) => void;
 }
@@ -37,6 +41,8 @@ export const TeamExcelImportModal: React.FC<TeamExcelImportModalProps> = ({
   config,
   existingTeams,
   existingTeamsCount,
+  user,
+  onOpenLogin,
   onClearAllTeams,
   onImportTeams,
 }) => {
@@ -56,16 +62,27 @@ export const TeamExcelImportModal: React.FC<TeamExcelImportModalProps> = ({
   const [showConfirmWipeModal, setShowConfirmWipeModal] = useState(false);
 
   const effectiveTeamsCount = existingTeamsCount !== undefined ? existingTeamsCount : existingTeams.length;
+  const isLoggedIn = Boolean(user && user.role && user.role !== 'viewer');
 
   if (!isOpen) return null;
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selected = e.target.files?.[0];
     if (!selected) return;
+    if (!isLoggedIn) {
+      alert('Bạn phải đăng nhập tài khoản để có quyền nhập danh sách đội bóng từ Excel!');
+      onOpenLogin?.();
+      return;
+    }
     await processFile(selected);
   };
 
   const processFile = async (f: File) => {
+    if (!isLoggedIn) {
+      alert('Bạn phải đăng nhập tài khoản để có quyền nhập danh sách đội bóng từ Excel!');
+      onOpenLogin?.();
+      return;
+    }
     setFile(f);
     setIsLoading(true);
     try {
@@ -134,6 +151,12 @@ export const TeamExcelImportModal: React.FC<TeamExcelImportModalProps> = ({
   });
 
   const handleConfirmImport = () => {
+    if (!isLoggedIn) {
+      alert('Bạn phải đăng nhập tài khoản để có quyền nhập danh sách đội bóng từ Excel!');
+      onOpenLogin?.();
+      return;
+    }
+
     const teamsToImport = previewTeams.filter((t) => selectedRowIds.has(t.id));
     if (teamsToImport.length === 0) {
       alert('Vui lòng chọn ít nhất một đội để nhập vào hệ thống!');
@@ -198,6 +221,38 @@ export const TeamExcelImportModal: React.FC<TeamExcelImportModalProps> = ({
 
         {/* Modal Body */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1">
+          {/* Login Requirement Banner if Guest */}
+          {!isLoggedIn && (
+            <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 rounded-2xl border border-amber-300 dark:border-amber-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
+              <div className="flex items-start sm:items-center gap-3 text-amber-900 dark:text-amber-200">
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <strong className="block font-bold text-sm text-amber-950 dark:text-amber-100">
+                    Yêu cầu đăng nhập để nhập dữ liệu
+                  </strong>
+                  <span className="text-amber-800 dark:text-amber-300 mt-0.5 block leading-relaxed">
+                    Bạn đang ở chế độ xem. Vui lòng đăng nhập tài khoản quản trị để có quyền tải lên và nhập danh sách đội bóng vào hệ thống giải đấu.
+                  </span>
+                </div>
+              </div>
+              {onOpenLogin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenLogin();
+                  }}
+                  className="px-4 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl font-bold transition flex items-center justify-center gap-1.5 shrink-0 shadow-xs cursor-pointer"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Đăng Nhập Ngay</span>
+                </button>
+              )}
+            </div>
+          )}
+
           {/* Top Download Template Banner */}
           <div className="p-4 bg-gradient-to-r from-emerald-50 via-teal-50 to-sky-50 dark:from-emerald-950/30 dark:via-teal-950/20 dark:to-sky-950/30 rounded-2xl border border-emerald-200/80 dark:border-emerald-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="space-y-0.5">
@@ -634,28 +689,42 @@ export const TeamExcelImportModal: React.FC<TeamExcelImportModalProps> = ({
             </button>
 
             {file && (
-              <button
-                type="button"
-                onClick={handleConfirmImport}
-                disabled={selectedRowIds.size === 0}
-                className={`px-4 py-2 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer ${
-                  cleanBeforeImport
-                    ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20'
-                    : 'bg-emerald-600 hover:bg-emerald-500'
-                }`}
-              >
-                {cleanBeforeImport ? (
-                  <>
-                    <Trash2 className="w-4 h-4" />
-                    <span>Làm Sạch & Nhập Mới ({selectedRowIds.size} Đội)</span>
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>Xác Nhận Nhập ({selectedRowIds.size} Đội)</span>
-                  </>
-                )}
-              </button>
+              isLoggedIn ? (
+                <button
+                  type="button"
+                  onClick={handleConfirmImport}
+                  disabled={selectedRowIds.size === 0}
+                  className={`px-4 py-2 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-sm cursor-pointer ${
+                    cleanBeforeImport
+                      ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20'
+                      : 'bg-emerald-600 hover:bg-emerald-500'
+                  }`}
+                >
+                  {cleanBeforeImport ? (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      <span>Làm Sạch & Nhập Mới ({selectedRowIds.size} Đội)</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Xác Nhận Nhập ({selectedRowIds.size} Đội)</span>
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenLogin?.();
+                  }}
+                  className="px-5 py-2.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
+                >
+                  <Lock className="w-4 h-4" />
+                  <span>Đăng Nhập Để Nhập Đội</span>
+                </button>
+              )
             )}
           </div>
         </div>

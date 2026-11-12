@@ -19,8 +19,10 @@ import {
   FileText,
   RefreshCw,
   Info,
+  Lock,
+  LogIn,
 } from 'lucide-react';
-import { Athlete, Team } from '../types';
+import { Athlete, Team, UserProfile } from '../types';
 import {
   downloadAthleteImportTemplateExcel,
   parseAthletesFromExcel,
@@ -36,6 +38,8 @@ interface AthleteExcelImportModalProps {
   teams: Team[];
   initialTeamFilter?: string;
   existingAthletesCount?: number;
+  user?: UserProfile;
+  onOpenLogin?: () => void;
   onConfirmImport: (
     importedAthletes: Athlete[],
     cleanMode?: 'none' | 'all' | 'target_teams'
@@ -49,10 +53,13 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
   teams,
   initialTeamFilter,
   existingAthletesCount = 0,
+  user,
+  onOpenLogin,
   onConfirmImport,
   onClearAllAthletes,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isLoggedIn = Boolean(user && user.role && user.role !== 'viewer');
   const [activeInputTab, setActiveInputTab] = useState<'file' | 'paste'>('file');
   const [pastedText, setPastedText] = useState('');
 
@@ -131,6 +138,11 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
   }, [teams, previewAthletes]);
 
   const processFile = async (f: File, sheetName = 'ALL') => {
+    if (!isLoggedIn) {
+      alert('Bạn phải đăng nhập tài khoản để có quyền nhập danh sách vận động viên từ Excel!');
+      onOpenLogin?.();
+      return;
+    }
     setFile(f);
     setIsLoading(true);
     setErrorMessage(null);
@@ -313,6 +325,12 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
   });
 
   const handleFinalConfirm = async () => {
+    if (!isLoggedIn) {
+      alert('Bạn phải đăng nhập tài khoản để có quyền nhập danh sách vận động viên từ Excel!');
+      onOpenLogin?.();
+      return;
+    }
+
     const toImport = previewAthletes.filter((a) => selectedIds.has(a.id));
     if (toImport.length === 0) {
       setErrorMessage('Vui lòng chọn ít nhất một vận động viên để nhập vào hệ thống!');
@@ -437,6 +455,38 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
 
         {/* Body */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-4 flex-1">
+          {/* Login Requirement Banner if Guest */}
+          {!isLoggedIn && (
+            <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 rounded-2xl border border-amber-300 dark:border-amber-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-xs">
+              <div className="flex items-start sm:items-center gap-3 text-amber-900 dark:text-amber-200">
+                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div>
+                  <strong className="block font-bold text-sm text-amber-950 dark:text-amber-100">
+                    Yêu cầu đăng nhập để nhập vận động viên
+                  </strong>
+                  <span className="text-amber-800 dark:text-amber-300 mt-0.5 block leading-relaxed">
+                    Bạn đang ở chế độ xem. Vui lòng đăng nhập tài khoản (Admin, Ban tổ chức, HLV) để có quyền tải lên và nhập danh sách vận động viên vào các đội.
+                  </span>
+                </div>
+              </div>
+              {onOpenLogin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenLogin();
+                  }}
+                  className="px-4 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl font-bold transition flex items-center justify-center gap-1.5 shrink-0 shadow-xs cursor-pointer"
+                >
+                  <LogIn className="w-3.5 h-3.5" />
+                  <span>Đăng Nhập Ngay</span>
+                </button>
+              )}
+            </div>
+          )}
+
           {/* In-app Error Banner */}
           {errorMessage && (
             <div className="p-3.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-2xl flex items-start justify-between gap-3 text-xs text-rose-800 dark:text-rose-200 animate-in fade-in">
@@ -961,35 +1011,49 @@ export const AthleteExcelImportModal: React.FC<AthleteExcelImportModalProps> = (
             >
               Hủy
             </button>
-            <button
-              type="button"
-              onClick={handleFinalConfirm}
-              disabled={previewAthletes.length === 0 || selectedIds.size === 0 || isLoading}
-              className={`px-5 py-2 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer ${
-                cleanMode === 'all'
-                  ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20'
-                  : cleanMode === 'target_teams'
-                  ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20'
-                  : 'bg-indigo-600 hover:bg-indigo-500'
-              }`}
-            >
-              {cleanMode === 'all' ? (
-                <>
-                  <Trash2 className="w-4 h-4" />
-                  <span>Làm Sạch Toàn Bộ & Nhập Mới ({selectedIds.size}) VĐV</span>
-                </>
-              ) : cleanMode === 'target_teams' ? (
-                <>
-                  <RefreshCw className="w-4 h-4" />
-                  <span>Làm Sạch Theo Đội & Nhập ({selectedIds.size}) VĐV</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Xác Nhận Nhập VĐV ({selectedIds.size})</span>
-                </>
-              )}
-            </button>
+            {!isLoggedIn ? (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenLogin?.();
+                }}
+                className="px-5 py-2.5 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer"
+              >
+                <Lock className="w-4 h-4" />
+                <span>Đăng Nhập Để Nhập VĐV</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleFinalConfirm}
+                disabled={previewAthletes.length === 0 || selectedIds.size === 0 || isLoading}
+                className={`px-5 py-2 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 shadow-xs cursor-pointer ${
+                  cleanMode === 'all'
+                    ? 'bg-rose-600 hover:bg-rose-500 shadow-rose-600/20'
+                    : cleanMode === 'target_teams'
+                    ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20'
+                    : 'bg-indigo-600 hover:bg-indigo-500'
+                }`}
+              >
+                {cleanMode === 'all' ? (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Làm Sạch Toàn Bộ & Nhập Mới ({selectedIds.size}) VĐV</span>
+                  </>
+                ) : cleanMode === 'target_teams' ? (
+                  <>
+                    <RefreshCw className="w-4 h-4" />
+                    <span>Làm Sạch Theo Đội & Nhập ({selectedIds.size}) VĐV</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Xác Nhận Nhập VĐV ({selectedIds.size})</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </div>
       </div>

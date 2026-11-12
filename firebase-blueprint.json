@@ -130,6 +130,23 @@
         "createdAt": { "type": "string" }
       },
       "required": ["id", "username", "role", "displayName"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Nhật ký lưu dấu vết các thao tác quản lý (sửa, xóa, thêm đội, VĐV, lịch thi đấu)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userRole": { "type": "string" },
+        "action": { "type": "string" },
+        "entityType": { "type": "string" },
+        "entityName": { "type": "string" },
+        "description": { "type": "string" }
+      },
+      "required": ["id", "timestamp", "userName", "action", "description"]
     }
   },
   "firestore": {
@@ -160,6 +177,10 @@
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/UserAccount" },
       "description": "Tài khoản người dùng đồng bộ hóa trên cơ sở dữ liệu Firestore"
+    },
+    "/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Nhật ký lưu dấu ai đã thực hiện thao tác quản lý"
     }
   }
 }

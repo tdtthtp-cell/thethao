@@ -119,7 +119,7 @@ export const AthleteModal: React.FC<AthleteModalProps> = ({
         </div>
 
         {/* Excel Import Fast Switch */}
-        {onOpenAthleteExcelImport && (
+        {onOpenAthleteExcelImport && user.role !== 'viewer' && (
           <div className="p-3 bg-emerald-50/80 dark:bg-emerald-950/40 rounded-2xl border border-emerald-200 dark:border-emerald-800 flex flex-wrap items-center justify-between gap-2.5 text-xs">
             <div className="flex items-center gap-2 text-emerald-900 dark:text-emerald-200">
               <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />

@@ -1,5 +1,6 @@
 import {
   Athlete,
+  AuditLog,
   Match,
   RankingCriterionConfig,
   Sport,
@@ -292,6 +293,7 @@ export function loadTournamentState() {
         matches: cleanMatches,
         users: cleanUsers.length > 0 ? cleanUsers : INITIAL_USER_ACCOUNTS,
         notifications: Array.isArray(parsed.notifications) ? parsed.notifications : INITIAL_NOTIFICATIONS,
+        auditLogs: Array.isArray(parsed.auditLogs) ? parsed.auditLogs : [],
       };
     }
   } catch (e) {
@@ -306,6 +308,7 @@ export function loadTournamentState() {
     matches: INITIAL_MATCHES,
     users: INITIAL_USER_ACCOUNTS,
     notifications: INITIAL_NOTIFICATIONS,
+    auditLogs: [],
   };
 }
 
@@ -317,6 +320,7 @@ export function saveTournamentState(state: {
   matches: Match[];
   users: UserAccount[];
   notifications: NotificationItem[];
+  auditLogs?: AuditLog[];
 }) {
   if (typeof window === 'undefined') return;
   try {

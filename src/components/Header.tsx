@@ -17,6 +17,7 @@ import {
   Flame,
   LogIn,
   LogOut,
+  History,
 } from 'lucide-react';
 import { TournamentConfig, UserProfile } from '../types';
 import { PWAInstallButton } from './PWAInstallButton';
@@ -32,6 +33,8 @@ interface HeaderProps {
   onOpenAuth: () => void;
   onOpenNotifications: () => void;
   unreadNotificationsCount: number;
+  onOpenAuditLogs?: () => void;
+  auditLogsCount?: number;
   isDark: boolean;
   onToggleDark: () => void;
   onThemeColorChange: (color: TournamentConfig['themeColor']) => void;
@@ -83,6 +86,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAuth,
   onOpenNotifications,
   unreadNotificationsCount,
+  onOpenAuditLogs,
+  auditLogsCount = 0,
   isDark,
   onToggleDark,
   onThemeColorChange,
@@ -207,6 +212,24 @@ export const Header: React.FC<HeaderProps> = ({
                   </span>
                 )}
               </button>
+
+              {/* Audit Log / History Button */}
+              {onOpenAuditLogs && (
+                <button
+                  type="button"
+                  onClick={onOpenAuditLogs}
+                  className="relative p-2 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 rounded-xl hover:bg-white dark:hover:bg-slate-700 transition cursor-pointer"
+                  title="Nhật ký quản lý & lịch sử thao tác (Audit Trail)"
+                  aria-label="Nhật ký quản lý"
+                >
+                  <History className="w-4 h-4 text-indigo-500" />
+                  {auditLogsCount > 0 && (
+                    <span className="absolute top-1 right-1 px-1 min-w-[14px] h-3.5 rounded-full bg-indigo-500 text-white text-[9px] font-extrabold flex items-center justify-center">
+                      {auditLogsCount > 99 ? '99+' : auditLogsCount}
+                    </span>
+                  )}
+                </button>
+              )}
 
               {/* Theme Color Picker */}
               <div className="relative">

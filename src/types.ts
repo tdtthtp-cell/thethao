@@ -83,6 +83,10 @@ export interface Team {
   coachName?: string;
   contactPhone?: string;
   color?: string;
+  createdBy?: string;
+  createdAt?: string;
+  lastUpdatedBy?: string;
+  lastUpdatedAt?: string;
 }
 
 export interface Athlete {
@@ -106,6 +110,10 @@ export interface Athlete {
   yellowCards: number;
   redCards: number;
   mvpCount: number;
+  createdBy?: string;
+  createdAt?: string;
+  lastUpdatedBy?: string;
+  lastUpdatedAt?: string;
 }
 
 export interface MatchEvent {
@@ -153,6 +161,10 @@ export interface Match {
   refereeName: string;
   secretaryName: string;
   notes?: string;
+  createdBy?: string;
+  createdAt?: string;
+  lastUpdatedBy?: string;
+  lastUpdatedAt?: string;
 }
 
 export interface VenueConfig {
@@ -204,4 +216,29 @@ export interface NotificationItem {
   message: string;
   type: 'score' | 'match_start' | 'registration' | 'system' | 'standing';
   read: boolean;
+}
+
+export type AuditAction =
+  | 'create'
+  | 'update'
+  | 'delete'
+  | 'bulk_delete'
+  | 'import'
+  | 'reorder'
+  | 'clear'
+  | 'score'
+  | 'approve';
+
+export type AuditEntityType = 'team' | 'athlete' | 'match' | 'schedule';
+
+export interface AuditLog {
+  id: string;
+  timestamp: string; // e.g. "12/11/2026 15:30:20"
+  userId?: string;
+  userName: string; // e.g. "admin (Ban Tổ Chức)" or "Trần Trọng Tài"
+  userRole: UserRole;
+  action: AuditAction;
+  entityType: AuditEntityType;
+  entityName?: string; // e.g. "Lớp 10A1", "Nguyễn Văn A (#10)", "Trận BK1 - 10A1 vs 10A2"
+  description: string; // Human-friendly description of what was changed
 }

@@ -36,6 +36,11 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Audit logs (Lưu dấu vết các thao tác quản trị)
+    match /audit_logs/{document=**} {
+      allow read, write: if true;
+    }
+
     // Connection test document
     match /test/{document=**} {
       allow read, write: if true;

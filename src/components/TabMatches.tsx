@@ -28,6 +28,7 @@ import {
   Download,
   CheckSquare,
   Square,
+  LogIn,
 } from 'lucide-react';
 import { Match, Sport, StandingItem, Team, TournamentConfig, UserProfile } from '../types';
 import { playRefereeWhistle, playScoreChime } from '../services/sound';
@@ -55,6 +56,7 @@ interface TabMatchesProps {
   onReorderMatches?: (reorderedMatches: Match[], noticeMsg?: string) => void;
   onOpenMinutes: (match: Match) => void;
   onOpenEditMatch: (match: Match) => void;
+  onOpenLogin?: () => void;
 }
 
 export const TabMatches: React.FC<TabMatchesProps> = ({
@@ -75,6 +77,7 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
   onReorderMatches,
   onOpenMinutes,
   onOpenEditMatch,
+  onOpenLogin,
 }) => {
   const [filterGroup, setFilterGroup] = useState<string>('ALL');
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
@@ -514,14 +517,12 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
           ) : (
             <button
               type="button"
-              onClick={() => {
-                alert('Chức năng xếp lịch thi đấu tự động và thêm trận dành cho Ban Tổ Chức (Admin) hoặc Trọng tài/Thư ký. Vui lòng bấm "Đăng nhập" ở góc trên để truy cập tài khoản nội bộ!');
-              }}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-              title="Đăng nhập tài khoản Quản trị để xếp lịch"
+              onClick={onOpenLogin}
+              className="px-4 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              title="Đăng nhập để xếp lịch và quản lý lịch thi đấu"
             >
-              <Lock className="w-3.5 h-3.5 text-amber-500" />
-              <span>Xếp Lịch & Tạo Vòng Đấu</span>
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Đăng Nhập Để Xếp Lịch</span>
             </button>
           )}
 
@@ -549,6 +550,28 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
           )}
         </div>
       </div>
+
+      {/* Read-Only Notice Banner for Unauthenticated Viewers */}
+      {!canManageSchedule && (
+        <div className="p-3.5 bg-amber-50 dark:bg-amber-950/40 rounded-2xl border border-amber-200/80 dark:border-amber-800/80 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5 text-amber-900 dark:text-amber-200">
+            <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>
+              <strong>Chế độ xem (Chỉ đọc)</strong>: Bạn chưa đăng nhập nên chỉ có thể xem lịch đấu và tỉ số trực tiếp. Vui lòng đăng nhập để có quyền xếp lịch, đổi thứ tự, nhập Excel hoặc cập nhật kết quả thi đấu.
+            </span>
+          </div>
+          {onOpenLogin && (
+            <button
+              type="button"
+              onClick={onOpenLogin}
+              className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold transition flex items-center gap-1.5 shrink-0 shadow-2xs cursor-pointer"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Đăng Nhập Ngay</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Schedule Feedback Banner */}
       {scheduleNotice && (
@@ -1220,6 +1243,17 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
                         </span>
                       );
                     })}
+                  </div>
+                )}
+
+                {(m.lastUpdatedBy || m.createdBy) && (
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-[10px] text-slate-400 dark:text-slate-500">
+                    {m.lastUpdatedBy ? (
+                      <span>Cập nhật: <strong className="font-semibold text-slate-600 dark:text-slate-400">{m.lastUpdatedBy}</strong>{m.lastUpdatedAt ? ` (${m.lastUpdatedAt})` : ''}</span>
+                    ) : <span />}
+                    {m.createdBy && (
+                      <span>Tạo: {m.createdBy}</span>
+                    )}
                   </div>
                 )}
               </div>

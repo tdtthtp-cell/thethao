@@ -14,6 +14,7 @@ import {
 import firebaseConfig from '../../firebase-applet-config.json';
 import {
   Athlete,
+  AuditLog,
   Match,
   NotificationItem,
   Sport,
@@ -81,6 +82,7 @@ const ATHLETES_COL = 'athletes';
 const MATCHES_COL = 'matches';
 const NOTIFICATIONS_COL = 'notifications';
 const USERS_COL = 'users';
+const AUDIT_LOGS_COL = 'audit_logs';
 
 const DEFAULT_ADMIN_USER: UserAccount = {
   id: 'U_ADMIN',
@@ -104,6 +106,7 @@ export function subscribeToFirestore(callbacks: {
   onMatchesChange?: (matches: Match[]) => void;
   onNotificationsChange?: (notifications: NotificationItem[]) => void;
   onUsersChange?: (users: UserAccount[]) => void;
+  onAuditLogsChange?: (auditLogs: AuditLog[]) => void;
   onSyncStatusChange?: (status: 'synced' | 'connecting' | 'error') => void;
 }): () => void {
   const unsubs: Unsubscribe[] = [];
@@ -223,6 +226,19 @@ export function subscribeToFirestore(callbacks: {
       (err) => console.warn('Firestore users listener warning:', err)
     );
     unsubs.push(unsubUsers);
+
+    // Audit Logs listener (Synchronizes audit trail of all actions across devices)
+    const unsubAudit = onSnapshot(
+      collection(db, AUDIT_LOGS_COL),
+      (snap) => {
+        if (callbacks.onAuditLogsChange) {
+          const logs = snap.docs.map((d) => d.data() as AuditLog);
+          callbacks.onAuditLogsChange(logs);
+        }
+      },
+      (err) => console.warn('Firestore audit_logs listener warning:', err)
+    );
+    unsubs.push(unsubAudit);
   } catch (err) {
     console.error('Error attaching Firestore listeners:', err);
     if (callbacks.onSyncStatusChange) callbacks.onSyncStatusChange('error');
@@ -454,5 +470,42 @@ export async function deleteUserFromFirestore(userId: string) {
   } catch (err) {
     console.error('Error deleting user account from Firestore:', err);
     throw err;
+  }
+}
+
+export async function syncAuditLogToFirestore(log: AuditLog) {
+  try {
+    const cleaned = cleanForFirestore(log);
+    await setDoc(doc(db, AUDIT_LOGS_COL, log.id), cleaned, { merge: true });
+  } catch (err) {
+    console.error('Error syncing audit log to Firestore:', err);
+  }
+}
+
+export async function syncMultipleAuditLogsToFirestore(logs: AuditLog[]) {
+  if (!logs || logs.length === 0) return;
+  try {
+    const batch = writeBatch(db);
+    logs.forEach((l) => {
+      batch.set(doc(db, AUDIT_LOGS_COL, l.id), cleanForFirestore(l), { merge: true });
+    });
+    await batch.commit();
+  } catch (err) {
+    console.error('Error batch syncing audit logs to Firestore:', err);
+  }
+}
+
+export async function clearAllAuditLogsFromFirestore(logIds: string[]) {
+  if (!logIds || logIds.length === 0) return;
+  try {
+    const chunkSize = 400;
+    for (let i = 0; i < logIds.length; i += chunkSize) {
+      const chunk = logIds.slice(i, i + chunkSize);
+      const batch = writeBatch(db);
+      chunk.forEach((id) => batch.delete(doc(db, AUDIT_LOGS_COL, id)));
+      await batch.commit();
+    }
+  } catch (err) {
+    console.error('Error clearing audit logs from Firestore:', err);
   }
 }
