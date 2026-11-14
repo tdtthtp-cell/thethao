@@ -27,20 +27,31 @@ export interface UserAccount {
   assignedCategories?: string[];
 }
 
-export type RankingCriterionType =
+export type RankingCriterionRule =
   | 'points'
   | 'head_to_head'
+  | 'matches_won'
+  | 'matches_lost'
   | 'set_difference'
+  | 'set_ratio'
   | 'sets_won'
   | 'sets_lost'
   | 'point_difference'
-  | 'points_scored';
+  | 'point_ratio'
+  | 'points_scored'
+  | 'points_conceded'
+  | 'custom';
+
+export type RankingCriterionType = RankingCriterionRule | string;
 
 export interface RankingCriterionConfig {
   id: RankingCriterionType;
   label: string;
   enabled: boolean;
   order: number;
+  rule?: RankingCriterionRule;
+  direction?: 'desc' | 'asc'; // 'desc' = cao hơn xếp trên (mặc định), 'asc' = ít hơn xếp trên
+  description?: string;
 }
 
 export type SportType = 'volleyball' | 'badminton' | 'tabletennis' | 'football' | 'shuttlecock' | string;
@@ -229,7 +240,7 @@ export type AuditAction =
   | 'score'
   | 'approve';
 
-export type AuditEntityType = 'team' | 'athlete' | 'match' | 'schedule';
+export type AuditEntityType = 'team' | 'athlete' | 'match' | 'schedule' | 'config';
 
 export interface AuditLog {
   id: string;

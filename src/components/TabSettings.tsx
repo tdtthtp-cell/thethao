@@ -13,16 +13,25 @@ import {
   Trash2,
   UserPlus,
   MapPin,
+  ChevronUp,
+  ChevronDown,
+  ArrowUpDown,
 } from 'lucide-react';
 import {
+  RankingCriterionConfig,
+  RankingCriterionRule,
   Sport,
   TournamentConfig,
   UserAccount,
   UserProfile,
   UserRole,
-  VenueConfig,
 } from '../types';
-import { DEFAULT_VENUES } from '../services/initialData';
+import { DEFAULT_RANKING_CRITERIA, DEFAULT_VENUES } from '../services/initialData';
+import {
+  RANKING_RULE_OPTIONS,
+  getRuleForCriterion,
+  getDirectionForCriterion,
+} from './TabStandings';
 
 interface TabSettingsProps {
   config: TournamentConfig;
@@ -63,7 +72,20 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [statusNotice, setStatusNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  // Ranking criteria add/edit states
+  const [editingCritId, setEditingCritId] = useState<string | null>(null);
+  const [editCritLabel, setEditCritLabel] = useState('');
+  const [editCritRule, setEditCritRule] = useState<RankingCriterionRule>('points');
+  const [editCritDir, setEditCritDir] = useState<'desc' | 'asc'>('desc');
+  const [editCritDesc, setEditCritDesc] = useState('');
+  const [showAddCritForm, setShowAddCritForm] = useState(false);
+  const [newCritLabel, setNewCritLabel] = useState('');
+  const [newCritRule, setNewCritRule] = useState<RankingCriterionRule>('matches_won');
+  const [newCritDir, setNewCritDir] = useState<'desc' | 'asc'>('desc');
+  const [newCritDesc, setNewCritDesc] = useState('');
+
   const isAdmin = currentUser.role === 'admin';
+  const canManage = currentUser.role !== 'viewer';
 
   const handleChange = (key: keyof TournamentConfig, value: unknown) => {
     onUpdateConfig({
@@ -770,6 +792,393 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
               </button>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* RANKING CRITERIA & PRIORITY CONFIGURATION */}
+      <div className="bg-white dark:bg-slate-900 p-6 rounded-3xl border border-slate-200/80 dark:border-slate-800 shadow-2xs space-y-4">
+        <div className="flex flex-wrap items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 gap-2">
+          <div>
+            <h3 className="font-bold text-sm text-slate-900 dark:text-white flex items-center gap-2">
+              <Sliders className="w-4 h-4 text-sky-600" />
+              Cấu Hình Tiêu Chí Xếp Hạng & Ưu Tiên
+            </h3>
+            <p className="text-xs text-slate-400">
+              Ban tổ chức có thể thêm tiêu chí mới, chỉnh sửa quy tắc xét thứ hạng, bật/tắt và sắp xếp thứ tự ưu tiên
+            </p>
+          </div>
+
+          {canManage && (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleChange('rankingCriteria', DEFAULT_RANKING_CRITERIA)}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Khôi Phục Mặc Định</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAddCritForm((prev) => !prev);
+                  setEditingCritId(null);
+                }}
+                className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Thêm Tiêu Chí Mới</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {showAddCritForm && canManage && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const ruleMeta = RANKING_RULE_OPTIONS.find((r) => r.value === newCritRule);
+              const finalLabel = newCritLabel.trim() || ruleMeta?.label || 'Tiêu chí xếp hạng mới';
+              const newItem: RankingCriterionConfig = {
+                id: `crit_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+                label: finalLabel,
+                rule: newCritRule,
+                direction: newCritDir,
+                description: newCritDesc.trim() || ruleMeta?.hint,
+                enabled: true,
+                order: config.rankingCriteria.length + 1,
+              };
+              const updated = [...config.rankingCriteria, newItem].map((item, idx) => ({
+                ...item,
+                order: idx + 1,
+              }));
+              handleChange('rankingCriteria', updated);
+              setNewCritLabel('');
+              setNewCritDesc('');
+              setShowAddCritForm(false);
+            }}
+            className="p-4 rounded-2xl bg-sky-50/70 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/80 space-y-3"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-sky-700 dark:text-sky-300 flex items-center gap-1.5">
+                <Plus className="w-4 h-4" />
+                Thêm Tiêu Chí Xếp Hạng Mới
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowAddCritForm(false)}
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  Quy tắc tính toán *
+                </label>
+                <select
+                  value={newCritRule}
+                  onChange={(e) => {
+                    const r = e.target.value as RankingCriterionRule;
+                    setNewCritRule(r);
+                    const meta = RANKING_RULE_OPTIONS.find((opt) => opt.value === r);
+                    if (meta) {
+                      setNewCritDir(meta.defaultDirection);
+                      if (!newCritLabel.trim()) setNewCritLabel(meta.label);
+                    }
+                  }}
+                  className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl outline-none font-semibold"
+                >
+                  {RANKING_RULE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  Chiều ưu tiên *
+                </label>
+                <select
+                  value={newCritDir}
+                  onChange={(e) => setNewCritDir(e.target.value as 'desc' | 'asc')}
+                  className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl outline-none font-semibold"
+                >
+                  <option value="desc">Cao hơn xếp trên (Giảm dần)</option>
+                  <option value="asc">Ít hơn xếp trên (Tăng dần)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  Tên hiển thị tiêu chí *
+                </label>
+                <input
+                  type="text"
+                  value={newCritLabel}
+                  onChange={(e) => setNewCritLabel(e.target.value)}
+                  placeholder="VD: Số trận thắng..."
+                  className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl outline-none font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+                  Mô tả / Ghi chú
+                </label>
+                <input
+                  type="text"
+                  value={newCritDesc}
+                  onChange={(e) => setNewCritDesc(e.target.value)}
+                  placeholder="VD: Đội thắng nhiều trận hơn..."
+                  className="w-full px-3 py-2 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowAddCritForm(false)}
+                className="px-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Lưu & Thêm Tiêu Chí</span>
+              </button>
+            </div>
+          </form>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+          {config.rankingCriteria.map((criterion, index) => {
+            const isEditing = editingCritId === criterion.id;
+            const rule = getRuleForCriterion(criterion);
+            const direction = getDirectionForCriterion(criterion);
+            const ruleMeta = RANKING_RULE_OPTIONS.find((r) => r.value === rule);
+            const cleanLabel = criterion.label.replace(/^\d+\.\s*/, '');
+
+            return (
+              <div
+                key={criterion.id}
+                className={`p-3.5 rounded-2xl border transition text-xs ${
+                  isEditing
+                    ? 'md:col-span-2 bg-sky-50/50 dark:bg-sky-950/30 border-sky-400 dark:border-sky-700 ring-2 ring-sky-500/20'
+                    : criterion.enabled
+                    ? 'bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800'
+                    : 'bg-slate-50/50 dark:bg-slate-950/40 border-slate-200/60 dark:border-slate-800/60 opacity-70'
+                }`}
+              >
+                {isEditing ? (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                          Tên tiêu chí *
+                        </label>
+                        <input
+                          type="text"
+                          value={editCritLabel}
+                          onChange={(e) => setEditCritLabel(e.target.value)}
+                          className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl outline-none font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                          Quy tắc tính *
+                        </label>
+                        <select
+                          value={editCritRule}
+                          onChange={(e) => setEditCritRule(e.target.value as RankingCriterionRule)}
+                          className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl outline-none font-semibold"
+                        >
+                          {RANKING_RULE_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                          Chiều ưu tiên
+                        </label>
+                        <select
+                          value={editCritDir}
+                          onChange={(e) => setEditCritDir(e.target.value as 'desc' | 'asc')}
+                          className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl outline-none font-semibold"
+                        >
+                          <option value="desc">Cao hơn xếp trên</option>
+                          <option value="asc">Ít hơn xếp trên</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold uppercase text-slate-400 mb-1">
+                          Mô tả
+                        </label>
+                        <input
+                          type="text"
+                          value={editCritDesc}
+                          onChange={(e) => setEditCritDesc(e.target.value)}
+                          className="w-full px-3 py-1.5 text-xs bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditingCritId(null)}
+                        className="px-3 py-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-xs font-bold cursor-pointer"
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!editCritLabel.trim()) return;
+                          const updated = config.rankingCriteria.map((c) =>
+                            c.id === criterion.id
+                              ? {
+                                  ...c,
+                                  label: editCritLabel.trim(),
+                                  rule: editCritRule,
+                                  direction: editCritDir,
+                                  description: editCritDesc.trim() || undefined,
+                                }
+                              : c
+                          );
+                          handleChange('rankingCriteria', updated);
+                          setEditingCritId(null);
+                        }}
+                        className="px-3.5 py-1 bg-emerald-600 text-white rounded-lg text-xs font-bold cursor-pointer"
+                      >
+                        Lưu Thay Đổi
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                      <input
+                        type="checkbox"
+                        disabled={!canManage}
+                        checked={criterion.enabled}
+                        onChange={() => {
+                          const updated = config.rankingCriteria.map((c) =>
+                            c.id === criterion.id ? { ...c, enabled: !c.enabled } : c
+                          );
+                          handleChange('rankingCriteria', updated);
+                        }}
+                        className="mt-0.5 w-4 h-4 rounded text-sky-600 outline-none cursor-pointer shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="px-1.5 py-0.5 rounded bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300 font-black text-[10px]">
+                            #{index + 1}
+                          </span>
+                          <span
+                            className={`font-bold ${
+                              criterion.enabled
+                                ? 'text-slate-900 dark:text-white'
+                                : 'text-slate-400 line-through'
+                            }`}
+                          >
+                            {cleanLabel}
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                          <span className="inline-flex items-center gap-0.5 font-semibold text-slate-600 dark:text-slate-300">
+                            <ArrowUpDown className="w-2.5 h-2.5 text-sky-500" />
+                            {direction === 'asc' ? 'Ít hơn xếp trên' : 'Cao hơn xếp trên'}
+                          </span>
+                          <span>• {ruleMeta?.label.split(' (')[0] || 'Tùy chỉnh'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {canManage && (
+                      <div className="flex items-center gap-0.5 shrink-0">
+                        <button
+                          type="button"
+                          disabled={index === 0}
+                          onClick={() => {
+                            const list = [...config.rankingCriteria];
+                            const tmp = list[index];
+                            list[index] = list[index - 1];
+                            list[index - 1] = tmp;
+                            handleChange(
+                              'rankingCriteria',
+                              list.map((it, idx) => ({ ...it, order: idx + 1 }))
+                            );
+                          }}
+                          className="p-1 text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 disabled:opacity-30 cursor-pointer"
+                          title="Lên trên"
+                        >
+                          <ChevronUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={index === config.rankingCriteria.length - 1}
+                          onClick={() => {
+                            const list = [...config.rankingCriteria];
+                            const tmp = list[index];
+                            list[index] = list[index + 1];
+                            list[index + 1] = tmp;
+                            handleChange(
+                              'rankingCriteria',
+                              list.map((it, idx) => ({ ...it, order: idx + 1 }))
+                            );
+                          }}
+                          className="p-1 text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 disabled:opacity-30 cursor-pointer"
+                          title="Xuống dưới"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingCritId(criterion.id);
+                            setEditCritLabel(cleanLabel);
+                            setEditCritRule(rule);
+                            setEditCritDir(direction);
+                            setEditCritDesc(criterion.description || '');
+                          }}
+                          className="p-1 text-slate-500 hover:text-sky-600 cursor-pointer"
+                          title="Chỉnh sửa"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        {config.rankingCriteria.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const filtered = config.rankingCriteria
+                                .filter((c) => c.id !== criterion.id)
+                                .map((it, idx) => ({ ...it, order: idx + 1 }));
+                              handleChange('rankingCriteria', filtered);
+                            }}
+                            className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                            title="Xóa"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 

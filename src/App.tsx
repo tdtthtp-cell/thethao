@@ -633,27 +633,131 @@ export default function App() {
         }
       });
 
-      // Sort items based on enabled ranking criteria
+      // Helper to evaluate head-to-head between two teams in this group
+      const compareHeadToHead = (itemA: StandingItem, itemB: StandingItem): number => {
+        const nameA = itemA.team.name.trim().toLowerCase();
+        const nameB = itemB.team.name.trim().toLowerCase();
+        let winsA = 0;
+        let winsB = 0;
+        let setsDiffA = 0;
+        let ptsDiffA = 0;
+
+        groupMatches.forEach((m) => {
+          const hName = (m.home?.name || '').trim().toLowerCase();
+          const aName = (m.away?.name || '').trim().toLowerCase();
+          const isAB =
+            (m.home?.id === itemA.team.id || hName === nameA) &&
+            (m.away?.id === itemB.team.id || aName === nameB);
+          const isBA =
+            (m.home?.id === itemB.team.id || hName === nameB) &&
+            (m.away?.id === itemA.team.id || aName === nameA);
+
+          if (!isAB && !isBA) return;
+
+          if (isFootball) {
+            const gHome = m.scores.set1.home;
+            const gAway = m.scores.set1.away;
+            const gA = isAB ? gHome : gAway;
+            const gB = isAB ? gAway : gHome;
+            ptsDiffA += gA - gB;
+            if (gA > gB) winsA++;
+            else if (gB > gA) winsB++;
+            else if (m.scores.pen?.played && m.scores.pen.home !== m.scores.pen.away) {
+              const penA = isAB ? m.scores.pen.home : m.scores.pen.away;
+              const penB = isAB ? m.scores.pen.away : m.scores.pen.home;
+              if (penA > penB) winsA++;
+              else if (penB > penA) winsB++;
+            }
+          } else {
+            let sHome = 0;
+            let sAway = 0;
+            let pHome = 0;
+            let pAway = 0;
+            for (let s = 1; s <= maxSets; s++) {
+              const sc = m.scores[`set${s}` as keyof typeof m.scores] as { home: number; away: number };
+              if (sc && (sc.home > 0 || sc.away > 0)) {
+                pHome += sc.home;
+                pAway += sc.away;
+                if (sc.home > sc.away) sHome++;
+                else if (sc.away > sc.home) sAway++;
+              }
+            }
+            const sA = isAB ? sHome : sAway;
+            const sB = isAB ? sAway : sHome;
+            const pA = isAB ? pHome : pAway;
+            const pB = isAB ? pAway : pHome;
+            setsDiffA += sA - sB;
+            ptsDiffA += pA - pB;
+            if (sA > sB) winsA++;
+            else if (sB > sA) winsB++;
+          }
+        });
+
+        if (winsB !== winsA) return winsB - winsA;
+        if (setsDiffA !== 0) return -setsDiffA;
+        if (ptsDiffA !== 0) return -ptsDiffA;
+        return 0;
+      };
+
+      // Sort items based on enabled ranking criteria (supporting custom rules & asc/desc direction)
       const sorted = Object.values(teamStats).sort((a, b) => {
         const criteria = config.rankingCriteria.filter((c) => c.enabled);
 
         for (const crit of criteria) {
-          if (crit.id === 'points') {
-            if (b.points !== a.points) return b.points - a.points;
-          } else if (crit.id === 'set_difference') {
-            const diffA = a.setsWon - a.setsLost;
-            const diffB = b.setsWon - b.setsLost;
-            if (diffB !== diffA) return diffB - diffA;
-          } else if (crit.id === 'sets_won') {
-            if (b.setsWon !== a.setsWon) return b.setsWon - a.setsWon;
-          } else if (crit.id === 'point_difference') {
-            const diffA = a.ptsFor - a.ptsAgainst;
-            const diffB = b.ptsFor - b.ptsAgainst;
-            if (diffB !== diffA) return diffB - diffA;
-          } else if (crit.id === 'points_scored') {
-            if (b.ptsFor !== a.ptsFor) return b.ptsFor - a.ptsFor;
-          } else if (crit.id === 'sets_lost') {
-            if (a.setsLost !== b.setsLost) return a.setsLost - b.setsLost; // fewer is better
+          const rule = crit.rule || crit.id;
+          const defaultDir =
+            rule === 'sets_lost' || rule === 'points_conceded' || rule === 'matches_lost'
+              ? 'asc'
+              : 'desc';
+          const dir = crit.direction || defaultDir;
+          const mult = dir === 'asc' ? -1 : 1;
+
+          if (rule === 'head_to_head') {
+            const h2h = compareHeadToHead(a, b);
+            if (h2h !== 0) return h2h * mult;
+            continue;
+          }
+
+          let valA = 0;
+          let valB = 0;
+
+          if (rule === 'points') {
+            valA = a.points;
+            valB = b.points;
+          } else if (rule === 'matches_won') {
+            valA = a.won;
+            valB = b.won;
+          } else if (rule === 'matches_lost') {
+            valA = a.lost;
+            valB = b.lost;
+          } else if (rule === 'set_difference') {
+            valA = a.setsWon - a.setsLost;
+            valB = b.setsWon - b.setsLost;
+          } else if (rule === 'set_ratio') {
+            valA = a.setsLost === 0 ? a.setsWon * 1000 : a.setsWon / a.setsLost;
+            valB = b.setsLost === 0 ? b.setsWon * 1000 : b.setsWon / b.setsLost;
+          } else if (rule === 'sets_won') {
+            valA = a.setsWon;
+            valB = b.setsWon;
+          } else if (rule === 'sets_lost') {
+            valA = a.setsLost;
+            valB = b.setsLost;
+          } else if (rule === 'point_difference') {
+            valA = a.ptsFor - a.ptsAgainst;
+            valB = b.ptsFor - b.ptsAgainst;
+          } else if (rule === 'point_ratio') {
+            valA = a.ptsAgainst === 0 ? a.ptsFor * 1000 : a.ptsFor / a.ptsAgainst;
+            valB = b.ptsAgainst === 0 ? b.ptsFor * 1000 : b.ptsFor / b.ptsAgainst;
+          } else if (rule === 'points_scored') {
+            valA = a.ptsFor;
+            valB = b.ptsFor;
+          } else if (rule === 'points_conceded') {
+            valA = a.ptsAgainst;
+            valB = b.ptsAgainst;
+          }
+
+          if (valB !== valA) {
+            return (valB - valA) * mult;
           }
         }
         return a.team.name.localeCompare(b.team.name);
@@ -1910,8 +2014,15 @@ export default function App() {
             standingsByGroup={standingsByGroup}
             config={config}
             user={currentUser}
-            onUpdateRankingCriteria={(crit) => {
+            onOpenLogin={() => setIsAuthOpen(true)}
+            onUpdateRankingCriteria={(crit, auditNote) => {
               handleUpdateConfig((prev) => ({ ...prev, rankingCriteria: crit }));
+              logAuditAction(
+                'update',
+                'config',
+                'Tiêu chí xếp hạng & ưu tiên',
+                auditNote || `Cập nhật danh sách tiêu chí xếp hạng (${crit.filter((c) => c.enabled).length} tiêu chí bật)`
+              );
             }}
           />
         )}
