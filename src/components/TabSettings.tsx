@@ -91,7 +91,7 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
   const [newCritDesc, setNewCritDesc] = useState('');
 
   const isAdmin = currentUser.role === 'admin';
-  const canManage = currentUser.role !== 'viewer';
+  const canManage = currentUser.role === 'admin';
 
   const handleChange = (key: keyof TournamentConfig, value: unknown) => {
     onUpdateConfig({
@@ -814,7 +814,7 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
             </p>
           </div>
 
-          {canManage && (
+          {canManage ? (
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
@@ -842,6 +842,10 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
                 <span>Thêm Tiêu Chí Mới</span>
               </button>
             </div>
+          ) : (
+            <span className="px-3 py-1 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-xs font-bold">
+              Chỉ Admin mới có quyền chỉnh sửa
+            </span>
           )}
         </div>
 

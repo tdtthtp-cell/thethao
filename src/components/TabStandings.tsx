@@ -179,8 +179,8 @@ export const TabStandings: React.FC<TabStandingsProps> = ({
   const [newDirection, setNewDirection] = useState<'desc' | 'asc'>('desc');
   const [newDescription, setNewDescription] = useState('');
 
-  // Allow any logged-in organizer/staff (admin, referee, secretary) to manage ranking criteria
-  const canManageCriteria = Boolean(user && user.role && user.role !== 'viewer');
+  // Only Admin has permission to edit match point calculation rules & ranking criteria
+  const canManageCriteria = Boolean(user && user.role === 'admin');
 
   const requireAuth = (): boolean => {
     if (canManageCriteria) return true;
@@ -345,10 +345,17 @@ export const TabStandings: React.FC<TabStandingsProps> = ({
           <button
             onClick={() => setShowCriteriaModal(true)}
             className="px-3.5 py-1.5 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/60 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-            title="Cấu hình, thêm và chỉnh sửa tiêu chí xếp hạng"
+            title={
+              canManageCriteria
+                ? 'Cấu hình, thêm và chỉnh sửa cách tính điểm & tiêu chí xếp hạng (Quyền Admin)'
+                : 'Xem quy định tính điểm & tiêu chí xếp hạng (Chỉ Admin mới có quyền chỉnh sửa)'
+            }
           >
             <Sliders className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-            <span>Tiêu Chí Xếp Hạng ({config.rankingCriteria.filter((c) => c.enabled).length})</span>
+            <span>
+              {canManageCriteria ? 'Tùy Chỉnh Điểm & Tiêu Chí' : 'Quy Định Điểm & Tiêu Chí'} (
+              {config.rankingCriteria.filter((c) => c.enabled).length})
+            </span>
           </button>
 
           {/* Print Button */}
@@ -398,14 +405,24 @@ export const TabStandings: React.FC<TabStandingsProps> = ({
               </>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => setShowCriteriaModal(true)}
-            className="text-sky-600 dark:text-sky-400 hover:underline font-bold text-xs flex items-center gap-1 shrink-0 cursor-pointer"
-          >
-            <Edit2 className="w-3 h-3" />
-            <span>Tùy chỉnh điểm & tiêu chí</span>
-          </button>
+          {canManageCriteria ? (
+            <button
+              type="button"
+              onClick={() => setShowCriteriaModal(true)}
+              className="text-sky-600 dark:text-sky-400 hover:underline font-bold text-xs flex items-center gap-1 shrink-0 cursor-pointer"
+            >
+              <Edit2 className="w-3 h-3" />
+              <span>Tùy chỉnh điểm & tiêu chí</span>
+            </button>
+          ) : (
+            <span
+              className="text-slate-400 dark:text-slate-500 font-semibold text-[11px] flex items-center gap-1 shrink-0"
+              title="Chỉ tài khoản Quản Trị Viên (Admin) mới có quyền chỉnh sửa quy định tính điểm và tiêu chí xếp hạng"
+            >
+              <Lock className="w-3 h-3" />
+              <span>Chỉ Admin có quyền chỉnh sửa</span>
+            </span>
+          )}
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
@@ -639,13 +656,13 @@ export const TabStandings: React.FC<TabStandingsProps> = ({
               </button>
             </div>
 
-            {/* Guest Warning Banner if not logged in */}
+            {/* Non-Admin Read-Only Warning Banner */}
             {!canManageCriteria && (
               <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 flex items-center justify-between gap-3 shrink-0">
                 <div className="flex items-center gap-2 text-xs text-amber-800 dark:text-amber-300">
                   <Lock className="w-4 h-4 shrink-0 text-amber-600" />
                   <span>
-                    Bạn đang ở chế độ <strong>Khách xem</strong>. Vui lòng đăng nhập tài khoản Ban Tổ Chức để thêm, chỉnh sửa hoặc đổi thứ tự tiêu chí xếp hạng.
+                    Chức năng này <strong>chỉ có Quản Trị Viên (Admin) mới có quyền chỉnh sửa</strong>. Bạn đang xem ở chế độ chỉ đọc.
                   </span>
                 </div>
                 {onOpenLogin && (
@@ -657,7 +674,7 @@ export const TabStandings: React.FC<TabStandingsProps> = ({
                     }}
                     className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold shrink-0 cursor-pointer"
                   >
-                    Đăng Nhập Ngay
+                    Đăng Nhập Admin
                   </button>
                 )}
               </div>
@@ -676,72 +693,74 @@ export const TabStandings: React.FC<TabStandingsProps> = ({
                   </p>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handlePointRuleChange(
-                        {
-                          mode: 'set_score',
-                          winClearPts: 3,
-                          winClosePts: 2,
-                          lossClosePts: 1,
-                          lossClearPts: 0,
-                        },
-                        'Áp dụng quy tắc điểm Bóng chuyền chuẩn trường học (Thắng 2-0/3-0: 3đ, Thắng 2-1/3-2: 2đ, Thua 1-2/2-3: 1đ, Thua 0-2/0-3: 0đ)'
-                      )
-                    }
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
-                      effectivePointRules.mode === 'set_score'
-                        ? 'bg-sky-600 text-white border-sky-600'
-                        : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                    }`}
-                  >
-                    Theo tỉ số Set (3-2-1-0)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handlePointRuleChange(
-                        {
-                          mode: 'fixed',
-                          fixedWinPts: 2,
-                          fixedDrawPts: 1,
-                          fixedLossPts: 1,
-                        },
-                        'Áp dụng quy tắc điểm cố định (Thắng 2đ, Thua 1đ)'
-                      )
-                    }
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
-                      effectivePointRules.mode === 'fixed' && effectivePointRules.fixedWinPts === 2
-                        ? 'bg-sky-600 text-white border-sky-600'
-                        : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                    }`}
-                  >
-                    Cố định (Thắng 2đ - Thua 1đ)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handlePointRuleChange(
-                        {
-                          mode: 'fixed',
-                          fixedWinPts: 3,
-                          fixedDrawPts: 1,
-                          fixedLossPts: 0,
-                        },
-                        'Áp dụng quy tắc điểm cố định (Thắng 3đ, Hòa 1đ, Thua 0đ)'
-                      )
-                    }
-                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
-                      effectivePointRules.mode === 'fixed' && effectivePointRules.fixedWinPts === 3
-                        ? 'bg-sky-600 text-white border-sky-600'
-                        : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
-                    }`}
-                  >
-                    Cố định (Thắng 3đ - Thua 0đ)
-                  </button>
-                </div>
+                {canManageCriteria && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handlePointRuleChange(
+                          {
+                            mode: 'set_score',
+                            winClearPts: 3,
+                            winClosePts: 2,
+                            lossClosePts: 1,
+                            lossClearPts: 0,
+                          },
+                          'Áp dụng quy tắc điểm Bóng chuyền chuẩn trường học (Thắng 2-0/3-0: 3đ, Thắng 2-1/3-2: 2đ, Thua 1-2/2-3: 1đ, Thua 0-2/0-3: 0đ)'
+                        )
+                      }
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                        effectivePointRules.mode === 'set_score'
+                          ? 'bg-sky-600 text-white border-sky-600'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      Theo tỉ số Set (3-2-1-0)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handlePointRuleChange(
+                          {
+                            mode: 'fixed',
+                            fixedWinPts: 2,
+                            fixedDrawPts: 1,
+                            fixedLossPts: 1,
+                          },
+                          'Áp dụng quy tắc điểm cố định (Thắng 2đ, Thua 1đ)'
+                        )
+                      }
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                        effectivePointRules.mode === 'fixed' && effectivePointRules.fixedWinPts === 2
+                          ? 'bg-sky-600 text-white border-sky-600'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      Cố định (Thắng 2đ - Thua 1đ)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handlePointRuleChange(
+                          {
+                            mode: 'fixed',
+                            fixedWinPts: 3,
+                            fixedDrawPts: 1,
+                            fixedLossPts: 0,
+                          },
+                          'Áp dụng quy tắc điểm cố định (Thắng 3đ, Hòa 1đ, Thua 0đ)'
+                        )
+                      }
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                        effectivePointRules.mode === 'fixed' && effectivePointRules.fixedWinPts === 3
+                          ? 'bg-sky-600 text-white border-sky-600'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      Cố định (Thắng 3đ - Thua 0đ)
+                    </button>
+                  </div>
+                )}
               </div>
 
               {effectivePointRules.mode === 'set_score' ? (
@@ -895,30 +914,32 @@ export const TabStandings: React.FC<TabStandingsProps> = ({
                 / {config.rankingCriteria.length} tiêu chí)
               </div>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleRestoreDefaults}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-                  title="Khôi phục bộ tiêu chí chuẩn mặc định"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Khôi Phục Mặc Định</span>
-                </button>
+              {canManageCriteria && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRestoreDefaults}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                    title="Khôi phục bộ tiêu chí chuẩn mặc định"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Khôi Phục Mặc Định</span>
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!requireAuth()) return;
-                    setShowAddForm((prev) => !prev);
-                    setEditingId(null);
-                  }}
-                  className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Thêm Tiêu Chí Mới</span>
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!requireAuth()) return;
+                      setShowAddForm((prev) => !prev);
+                      setEditingId(null);
+                    }}
+                    className="px-3.5 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Thêm Tiêu Chí Mới</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Add New Criterion Form */}
@@ -1149,10 +1170,17 @@ export const TabStandings: React.FC<TabStandingsProps> = ({
                         <div className="flex items-start gap-3 min-w-0 flex-1">
                           <input
                             type="checkbox"
+                            disabled={!canManageCriteria}
                             checked={criterion.enabled}
                             onChange={() => handleToggleCriterion(criterion.id)}
-                            className="mt-1 w-4 h-4 rounded text-sky-600 outline-none cursor-pointer shrink-0"
-                            title={criterion.enabled ? 'Đang bật (nhấn để tắt)' : 'Đang tắt (nhấn để bật)'}
+                            className="mt-1 w-4 h-4 rounded text-sky-600 outline-none cursor-pointer disabled:cursor-not-allowed shrink-0"
+                            title={
+                              !canManageCriteria
+                                ? 'Chỉ Admin mới có quyền bật/tắt tiêu chí'
+                                : criterion.enabled
+                                ? 'Đang bật (nhấn để tắt)'
+                                : 'Đang tắt (nhấn để bật)'
+                            }
                           />
                           <div className="min-w-0 flex-1 space-y-1">
                             <div className="flex flex-wrap items-center gap-2">
@@ -1185,45 +1213,47 @@ export const TabStandings: React.FC<TabStandingsProps> = ({
                           </div>
                         </div>
 
-                        {/* Action Buttons */}
-                        <div className="flex items-center gap-1 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleMoveCriterion(index, 'up')}
-                            disabled={index === 0}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-200/60 dark:hover:text-slate-200 dark:hover:bg-slate-800 disabled:opacity-30 cursor-pointer"
-                            title="Tăng độ ưu tiên (Lên trên)"
-                          >
-                            <ChevronUp className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleMoveCriterion(index, 'down')}
-                            disabled={index === config.rankingCriteria.length - 1}
-                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-200/60 dark:hover:text-slate-200 dark:hover:bg-slate-800 disabled:opacity-30 cursor-pointer"
-                            title="Giảm độ ưu tiên (Xuống dưới)"
-                          >
-                            <ChevronDown className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleStartEdit(criterion)}
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950/50 cursor-pointer"
-                            title="Chỉnh sửa tiêu chí này"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          {config.rankingCriteria.length > 1 && (
+                        {/* Action Buttons - Admin Only */}
+                        {canManageCriteria && (
+                          <div className="flex items-center gap-1 shrink-0">
                             <button
                               type="button"
-                              onClick={() => handleDeleteCriterion(criterion)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 cursor-pointer"
-                              title="Xóa tiêu chí này"
+                              onClick={() => handleMoveCriterion(index, 'up')}
+                              disabled={index === 0}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-200/60 dark:hover:text-slate-200 dark:hover:bg-slate-800 disabled:opacity-30 cursor-pointer"
+                              title="Tăng độ ưu tiên (Lên trên)"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <ChevronUp className="w-4 h-4" />
                             </button>
-                          )}
-                        </div>
+                            <button
+                              type="button"
+                              onClick={() => handleMoveCriterion(index, 'down')}
+                              disabled={index === config.rankingCriteria.length - 1}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-800 hover:bg-slate-200/60 dark:hover:text-slate-200 dark:hover:bg-slate-800 disabled:opacity-30 cursor-pointer"
+                              title="Giảm độ ưu tiên (Xuống dưới)"
+                            >
+                              <ChevronDown className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleStartEdit(criterion)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-950/50 cursor-pointer"
+                              title="Chỉnh sửa tiêu chí này"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            {config.rankingCriteria.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCriterion(criterion)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 cursor-pointer"
+                                title="Xóa tiêu chí này"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

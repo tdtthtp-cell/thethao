@@ -1998,6 +1998,10 @@ export default function App() {
             user={currentUser}
             onOpenLogin={() => setIsAuthOpen(true)}
             onUpdateRankingCriteria={(crit, auditNote) => {
+              if (currentUser.role !== 'admin') {
+                setIsAuthOpen(true);
+                return;
+              }
               handleUpdateConfig((prev) => ({ ...prev, rankingCriteria: crit }));
               logAuditAction(
                 'update',
@@ -2007,6 +2011,10 @@ export default function App() {
               );
             }}
             onUpdateSetPointRules={(rules, auditNote) => {
+              if (currentUser.role !== 'admin') {
+                setIsAuthOpen(true);
+                return;
+              }
               handleUpdateConfig((prev) => ({ ...prev, setPointRules: rules }));
               setSports((prev) =>
                 prev.map((sp) => {
