@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { Athlete, Match, StandingItem, Team, TournamentConfig } from '../types';
 import { encryptFullDataPackage, decryptFullDataPackage } from './crypto';
+import { computeSetMatchTournamentPoints, getEffectiveSetPointRules } from './initialData';
 
 /**
  * Export full tournament workbook to Excel (.xlsx)
@@ -249,47 +250,39 @@ export function calculateMatchMinutesPoints(
     awaySetsWon > 0 ||
     match.status === 'FINISHED';
 
+  const rules = getEffectiveSetPointRules(undefined, config);
+
   if (!hasScore) {
     homeTournamentPts = 0;
     awayTournamentPts = 0;
   } else if (homeSetsWon > awaySetsWon) {
     winnerName = match.home.name;
     loserName = match.away.name;
-    // Điều lệ chuẩn: Thắng 2-0 / 3-0 / 3-1: 3 điểm, thua 0 điểm.
-    // Thắng 2-1 / 3-2: 2 điểm, thua 1 điểm.
-    if (awaySetsWon === 0 || homeSetsWon - awaySetsWon >= 2) {
-      homeTournamentPts = 3;
-      awayTournamentPts = 0;
-    } else {
-      homeTournamentPts = 2;
-      awayTournamentPts = 1;
-    }
+    const pts = computeSetMatchTournamentPoints(homeSetsWon, awaySetsWon, rules);
+    homeTournamentPts = pts.homePts;
+    awayTournamentPts = pts.awayPts;
   } else if (awaySetsWon > homeSetsWon) {
     winnerName = match.away.name;
     loserName = match.home.name;
-    if (homeSetsWon === 0 || awaySetsWon - homeSetsWon >= 2) {
-      awayTournamentPts = 3;
-      homeTournamentPts = 0;
-    } else {
-      awayTournamentPts = 2;
-      homeTournamentPts = 1;
-    }
+    const pts = computeSetMatchTournamentPoints(homeSetsWon, awaySetsWon, rules);
+    homeTournamentPts = pts.homePts;
+    awayTournamentPts = pts.awayPts;
   } else {
     // Tỉ số set hòa (nếu có trận giao hữu hoặc chưa phân thắng bại)
     if (match.status === 'FINISHED' && (homeTotalPts > 0 || awayTotalPts > 0)) {
       if (homeTotalPts > awayTotalPts) {
         winnerName = match.home.name;
         loserName = match.away.name;
-        homeTournamentPts = 2;
-        awayTournamentPts = 1;
+        homeTournamentPts = rules.mode === 'fixed' ? rules.fixedWinPts : rules.winClosePts;
+        awayTournamentPts = rules.mode === 'fixed' ? rules.fixedLossPts : rules.lossClosePts;
       } else if (awayTotalPts > homeTotalPts) {
         winnerName = match.away.name;
         loserName = match.home.name;
-        awayTournamentPts = 2;
-        homeTournamentPts = 1;
+        awayTournamentPts = rules.mode === 'fixed' ? rules.fixedWinPts : rules.winClosePts;
+        homeTournamentPts = rules.mode === 'fixed' ? rules.fixedLossPts : rules.lossClosePts;
       } else {
-        homeTournamentPts = 1;
-        awayTournamentPts = 1;
+        homeTournamentPts = rules.fixedDrawPts;
+        awayTournamentPts = rules.fixedDrawPts;
       }
     } else {
       homeTournamentPts = 0;

@@ -20,13 +20,19 @@ import {
 import {
   RankingCriterionConfig,
   RankingCriterionRule,
+  SetPointRules,
   Sport,
   TournamentConfig,
   UserAccount,
   UserProfile,
   UserRole,
 } from '../types';
-import { DEFAULT_RANKING_CRITERIA, DEFAULT_VENUES } from '../services/initialData';
+import {
+  DEFAULT_RANKING_CRITERIA,
+  DEFAULT_SET_POINT_RULES,
+  DEFAULT_VENUES,
+  getEffectiveSetPointRules,
+} from '../services/initialData';
 import {
   RANKING_RULE_OPTIONS,
   getRuleForCriterion,
@@ -812,7 +818,13 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
             <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                onClick={() => handleChange('rankingCriteria', DEFAULT_RANKING_CRITERIA)}
+                onClick={() => {
+                  onUpdateConfig({
+                    ...config,
+                    rankingCriteria: DEFAULT_RANKING_CRITERIA,
+                    setPointRules: DEFAULT_SET_POINT_RULES,
+                  });
+                }}
                 className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
               >
                 <RotateCcw className="w-3.5 h-3.5" />
@@ -832,6 +844,192 @@ export const TabSettings: React.FC<TabSettingsProps> = ({
             </div>
           )}
         </div>
+
+        {/* Point Calculation Rules Box inside Settings */}
+        {(() => {
+          const rules: SetPointRules = getEffectiveSetPointRules(null, config);
+          const updatePointRules = (patch: Partial<SetPointRules>) => {
+            if (!canManage) return;
+            handleChange('setPointRules', { ...DEFAULT_SET_POINT_RULES, ...rules, ...patch });
+          };
+          return (
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Trophy className="w-4 h-4 text-amber-500" />
+                    Quy Định Cách Tính Điểm Trận Đấu (Do Ban Tổ Chức Quy Định)
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Trong Bóng chuyền (3 set hoặc 5 set), điểm trận thắng có thể tính theo tỉ số Set (2-0 / 3-0: 3đ; 2-1 / 3-2: 2đ; thua 1-2 / 2-3: 1đ) hoặc điểm cố định
+                  </p>
+                </div>
+
+                {canManage && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updatePointRules({
+                          mode: 'set_score',
+                          winClearPts: 3,
+                          winClosePts: 2,
+                          lossClosePts: 1,
+                          lossClearPts: 0,
+                        })
+                      }
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                        rules.mode === 'set_score'
+                          ? 'bg-sky-600 text-white border-sky-600'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      Theo tỉ số Set (3-2-1-0)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updatePointRules({
+                          mode: 'fixed',
+                          fixedWinPts: 2,
+                          fixedDrawPts: 1,
+                          fixedLossPts: 1,
+                        })
+                      }
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                        rules.mode === 'fixed' && rules.fixedWinPts === 2
+                          ? 'bg-sky-600 text-white border-sky-600'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      Cố định (Thắng 2đ - Thua 1đ)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updatePointRules({
+                          mode: 'fixed',
+                          fixedWinPts: 3,
+                          fixedDrawPts: 1,
+                          fixedLossPts: 0,
+                        })
+                      }
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                        rules.mode === 'fixed' && rules.fixedWinPts === 3
+                          ? 'bg-sky-600 text-white border-sky-600'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      Cố định (Thắng 3đ - Thua 0đ)
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {rules.mode === 'set_score' ? (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-emerald-200 dark:border-emerald-900/60 space-y-1">
+                    <div className="font-extrabold text-emerald-700 dark:text-emerald-400 text-[11px]">
+                      Thắng 2-0 hoặc 3-0 (3-1)
+                    </div>
+                    <div className="text-[10px] text-slate-400">Thắng cách biệt</div>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <input
+                        type="number"
+                        disabled={!canManage}
+                        value={rules.winClearPts}
+                        onChange={(e) => updatePointRules({ winClearPts: Number(e.target.value) || 0 })}
+                        className="w-16 px-2 py-1 text-center font-mono font-black text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
+                      />
+                      <span className="text-[11px] font-bold text-slate-500">điểm</span>
+                    </div>
+                  </div>
+                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-sky-200 dark:border-sky-900/60 space-y-1">
+                    <div className="font-extrabold text-sky-700 dark:text-sky-400 text-[11px]">
+                      Thắng 2-1 hoặc 3-2
+                    </div>
+                    <div className="text-[10px] text-slate-400">Thắng sát nút</div>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <input
+                        type="number"
+                        disabled={!canManage}
+                        value={rules.winClosePts}
+                        onChange={(e) => updatePointRules({ winClosePts: Number(e.target.value) || 0 })}
+                        className="w-16 px-2 py-1 text-center font-mono font-black text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
+                      />
+                      <span className="text-[11px] font-bold text-slate-500">điểm</span>
+                    </div>
+                  </div>
+                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-amber-200 dark:border-amber-900/60 space-y-1">
+                    <div className="font-extrabold text-amber-700 dark:text-amber-400 text-[11px]">
+                      Thua 1-2 hoặc 2-3
+                    </div>
+                    <div className="text-[10px] text-slate-400">Thua sát nút</div>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <input
+                        type="number"
+                        disabled={!canManage}
+                        value={rules.lossClosePts}
+                        onChange={(e) => updatePointRules({ lossClosePts: Number(e.target.value) || 0 })}
+                        className="w-16 px-2 py-1 text-center font-mono font-black text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
+                      />
+                      <span className="text-[11px] font-bold text-slate-500">điểm</span>
+                    </div>
+                  </div>
+                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-rose-200 dark:border-rose-900/60 space-y-1">
+                    <div className="font-extrabold text-rose-700 dark:text-rose-400 text-[11px]">
+                      Thua 0-2 hoặc 0-3 (1-3)
+                    </div>
+                    <div className="text-[10px] text-slate-400">Thua cách biệt</div>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <input
+                        type="number"
+                        disabled={!canManage}
+                        value={rules.lossClearPts}
+                        onChange={(e) => updatePointRules({ lossClearPts: Number(e.target.value) || 0 })}
+                        className="w-16 px-2 py-1 text-center font-mono font-black text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
+                      />
+                      <span className="text-[11px] font-bold text-slate-500">điểm</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2.5">
+                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                    <span className="font-bold text-emerald-700 dark:text-emerald-400">Mọi trận Thắng:</span>
+                    <input
+                      type="number"
+                      disabled={!canManage}
+                      value={rules.fixedWinPts}
+                      onChange={(e) => updatePointRules({ fixedWinPts: Number(e.target.value) || 0 })}
+                      className="w-16 px-2 py-1 text-center font-mono font-black text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
+                    />
+                  </div>
+                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                    <span className="font-bold text-amber-700 dark:text-amber-400">Trận Hòa:</span>
+                    <input
+                      type="number"
+                      disabled={!canManage}
+                      value={rules.fixedDrawPts}
+                      onChange={(e) => updatePointRules({ fixedDrawPts: Number(e.target.value) || 0 })}
+                      className="w-16 px-2 py-1 text-center font-mono font-black text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
+                    />
+                  </div>
+                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                    <span className="font-bold text-rose-700 dark:text-rose-400">Mọi trận Thua:</span>
+                    <input
+                      type="number"
+                      disabled={!canManage}
+                      value={rules.fixedLossPts}
+                      onChange={(e) => updatePointRules({ fixedLossPts: Number(e.target.value) || 0 })}
+                      className="w-16 px-2 py-1 text-center font-mono font-black text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {showAddCritForm && canManage && (
           <form

@@ -3,6 +3,7 @@ import {
   AuditLog,
   Match,
   RankingCriterionConfig,
+  SetPointRules,
   Sport,
   Team,
   TournamentConfig,
@@ -11,6 +12,75 @@ import {
   UserAccount,
   UserProfile,
 } from '../types';
+
+export const DEFAULT_SET_POINT_RULES: SetPointRules = {
+  mode: 'set_score',
+  winClearPts: 3,  // Thắng 2-0 hoặc 3-0 (3-1): 3 điểm
+  winClosePts: 2,  // Thắng 2-1 hoặc 3-2: 2 điểm
+  lossClosePts: 1, // Thua 1-2 hoặc 2-3: 1 điểm
+  lossClearPts: 0, // Thua 0-2 hoặc 0-3 (1-3): 0 điểm
+  fixedWinPts: 3,
+  fixedDrawPts: 1,
+  fixedLossPts: 0,
+};
+
+export function getEffectiveSetPointRules(
+  sport?: Sport | null,
+  config?: TournamentConfig | null
+): SetPointRules {
+  if (sport?.setPointRules) {
+    return { ...DEFAULT_SET_POINT_RULES, ...sport.setPointRules };
+  }
+  if (config?.setPointRules) {
+    return { ...DEFAULT_SET_POINT_RULES, ...config.setPointRules };
+  }
+  if (sport) {
+    return {
+      mode: sport.pointScheme === 'custom' ? 'fixed' : 'set_score',
+      winClearPts: sport.ptsWin ?? 3,
+      winClosePts: sport.ptsWinClose ?? 2,
+      lossClosePts: sport.ptsLossClose ?? 1,
+      lossClearPts: sport.ptsLossClear ?? sport.ptsLoss ?? 0,
+      fixedWinPts: sport.ptsWin ?? 3,
+      fixedDrawPts: sport.ptsDraw ?? 1,
+      fixedLossPts: sport.ptsLoss ?? 0,
+    };
+  }
+  return DEFAULT_SET_POINT_RULES;
+}
+
+export function computeSetMatchTournamentPoints(
+  hSets: number,
+  aSets: number,
+  rules: SetPointRules
+): { homePts: number; awayPts: number } {
+  if (rules.mode === 'fixed') {
+    if (hSets > aSets) {
+      return { homePts: rules.fixedWinPts, awayPts: rules.fixedLossPts };
+    }
+    if (aSets > hSets) {
+      return { homePts: rules.fixedLossPts, awayPts: rules.fixedWinPts };
+    }
+    return { homePts: rules.fixedDrawPts, awayPts: rules.fixedDrawPts };
+  }
+
+  // mode === 'set_score' (Tính điểm theo tỉ số Set do BTC quy định)
+  if (hSets > aSets) {
+    const isClearWin = aSets === 0 || hSets - aSets >= 2;
+    return {
+      homePts: isClearWin ? rules.winClearPts : rules.winClosePts,
+      awayPts: isClearWin ? rules.lossClearPts : rules.lossClosePts,
+    };
+  }
+  if (aSets > hSets) {
+    const isClearWin = hSets === 0 || aSets - hSets >= 2;
+    return {
+      homePts: isClearWin ? rules.lossClearPts : rules.lossClosePts,
+      awayPts: isClearWin ? rules.winClearPts : rules.winClosePts,
+    };
+  }
+  return { homePts: rules.fixedDrawPts, awayPts: rules.fixedDrawPts };
+}
 
 export const DEFAULT_RANKING_CRITERIA: RankingCriterionConfig[] = [
   {
@@ -226,6 +296,7 @@ export const DEFAULT_CONFIG: TournamentConfig = {
   customGroups: ['Khối 10', 'Khối 11', 'Khối 12'],
   venues: DEFAULT_VENUES,
   rankingCriteria: DEFAULT_RANKING_CRITERIA,
+  setPointRules: DEFAULT_SET_POINT_RULES,
   themeColor: 'blue',
   e2eeEnabled: true,
   e2eePassphraseHash: `default_hash_sport${CURRENT_YEAR}`,

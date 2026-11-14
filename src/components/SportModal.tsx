@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Trophy } from 'lucide-react';
 import { Sport, SportCategory } from '../types';
+import { DEFAULT_SET_POINT_RULES, getEffectiveSetPointRules } from '../services/initialData';
 
 interface SportModalProps {
   sport?: Sport | null;
@@ -15,12 +16,18 @@ export const SportModal: React.FC<SportModalProps> = ({
   onClose,
   onSave,
 }) => {
+  const initialRules = getEffectiveSetPointRules(sport, null);
   const [name, setName] = useState(sport?.name || '');
   const [maxSets, setMaxSets] = useState<number>(sport?.maxSets || 3);
-  const [pointScheme, setPointScheme] = useState<Sport['pointScheme']>(sport?.pointScheme || 'standard');
-  const [ptsWin, setPtsWin] = useState<number>(sport?.ptsWin || 3);
-  const [ptsDraw, setPtsDraw] = useState<number>(sport?.ptsDraw || 0);
-  const [ptsLoss, setPtsLoss] = useState<number>(sport?.ptsLoss || 0);
+  const [pointScheme, setPointScheme] = useState<Sport['pointScheme']>(
+    sport?.pointScheme || (initialRules.mode === 'fixed' ? 'custom' : 'standard')
+  );
+  const [ptsWin, setPtsWin] = useState<number>(sport?.ptsWin ?? initialRules.winClearPts ?? 3);
+  const [ptsWinClose, setPtsWinClose] = useState<number>(sport?.ptsWinClose ?? initialRules.winClosePts ?? 2);
+  const [ptsLossClose, setPtsLossClose] = useState<number>(sport?.ptsLossClose ?? initialRules.lossClosePts ?? 1);
+  const [ptsLossClear, setPtsLossClear] = useState<number>(sport?.ptsLossClear ?? initialRules.lossClearPts ?? 0);
+  const [ptsDraw, setPtsDraw] = useState<number>(sport?.ptsDraw ?? initialRules.fixedDrawPts ?? 0);
+  const [ptsLoss, setPtsLoss] = useState<number>(sport?.ptsLoss ?? initialRules.fixedLossPts ?? 0);
   const [description, setDescription] = useState(sport?.description || '');
   const [categories, setCategories] = useState<SportCategory[]>(
     sport?.categories || [
@@ -32,12 +39,16 @@ export const SportModal: React.FC<SportModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
+      const r = getEffectiveSetPointRules(sport, null);
       setName(sport?.name || '');
       setMaxSets(sport?.maxSets || 3);
-      setPointScheme(sport?.pointScheme || 'standard');
-      setPtsWin(sport?.ptsWin || 3);
-      setPtsDraw(sport?.ptsDraw || 0);
-      setPtsLoss(sport?.ptsLoss || 0);
+      setPointScheme(sport?.pointScheme || (r.mode === 'fixed' ? 'custom' : 'standard'));
+      setPtsWin(sport?.ptsWin ?? r.winClearPts ?? 3);
+      setPtsWinClose(sport?.ptsWinClose ?? r.winClosePts ?? 2);
+      setPtsLossClose(sport?.ptsLossClose ?? r.lossClosePts ?? 1);
+      setPtsLossClear(sport?.ptsLossClear ?? r.lossClearPts ?? 0);
+      setPtsDraw(sport?.ptsDraw ?? r.fixedDrawPts ?? 0);
+      setPtsLoss(sport?.ptsLoss ?? r.fixedLossPts ?? 0);
       setDescription(sport?.description || '');
       setCategories(
         sport?.categories || [
@@ -110,9 +121,23 @@ export const SportModal: React.FC<SportModalProps> = ({
       code,
       maxSets: Number(maxSets) || 1,
       pointScheme,
-      ptsWin: Number(ptsWin) || 3,
-      ptsDraw: Number(ptsDraw) || 0,
-      ptsLoss: Number(ptsLoss) || 0,
+      ptsWin: Number(ptsWin) ?? 3,
+      ptsWinClose: Number(ptsWinClose) ?? 2,
+      ptsLossClose: Number(ptsLossClose) ?? 1,
+      ptsLossClear: Number(ptsLossClear) ?? 0,
+      ptsDraw: Number(ptsDraw) ?? 0,
+      ptsLoss: Number(ptsLoss) ?? 0,
+      setPointRules: {
+        ...DEFAULT_SET_POINT_RULES,
+        mode: pointScheme === 'custom' ? 'fixed' : 'set_score',
+        winClearPts: Number(ptsWin) ?? 3,
+        winClosePts: Number(ptsWinClose) ?? 2,
+        lossClosePts: Number(ptsLossClose) ?? 1,
+        lossClearPts: Number(ptsLossClear) ?? 0,
+        fixedWinPts: Number(ptsWin) ?? 3,
+        fixedDrawPts: Number(ptsDraw) ?? 0,
+        fixedLossPts: Number(ptsLoss) ?? 0,
+      },
       description: description.trim(),
       categories,
     });
@@ -258,46 +283,114 @@ export const SportModal: React.FC<SportModalProps> = ({
 
             <div>
               <label className="block text-xs font-semibold uppercase text-slate-500 mb-1">
-                Quy Tắc Điểm
+                Cách Tính Điểm Trận Đấu (Do BTC Quy Định)
               </label>
               <select
                 value={pointScheme}
                 onChange={(e) => setPointScheme(e.target.value as Sport['pointScheme'])}
-                className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none"
+                className="w-full px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl outline-none font-semibold"
               >
-                <option value="standard">Quy chuẩn thể thao</option>
-                <option value="custom">Điểm cố định</option>
+                <option value="standard">Tính theo tỉ số Set (2-0/3-0 khác 2-1/3-2)</option>
+                <option value="custom">Tính điểm cố định (Thắng / Hòa / Thua)</option>
               </select>
             </div>
           </div>
 
-          {pointScheme === 'custom' && (
+          {pointScheme === 'standard' && Number(maxSets) > 1 ? (
+            <div className="p-3.5 bg-sky-50/70 dark:bg-sky-950/30 rounded-2xl border border-sky-200 dark:border-sky-800/80 space-y-2.5 text-xs">
+              <div className="font-bold text-sky-800 dark:text-sky-300 flex items-center justify-between">
+                <span>Quy định điểm theo tỉ số Set (3 set / 5 set):</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPtsWin(3);
+                    setPtsWinClose(2);
+                    setPtsLossClose(1);
+                    setPtsLossClear(0);
+                  }}
+                  className="text-[10px] font-bold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
+                >
+                  Đặt chuẩn 3-2-1-0
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+                  <div>
+                    <div className="font-bold text-emerald-700 dark:text-emerald-400">Thắng 2-0 / 3-0 (3-1)</div>
+                    <div className="text-[10px] text-slate-400">Thắng cách biệt</div>
+                  </div>
+                  <input
+                    type="number"
+                    value={ptsWin}
+                    onChange={(e) => setPtsWin(Number(e.target.value))}
+                    className="w-14 px-2 py-1 text-center font-mono font-black bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg"
+                  />
+                </div>
+                <div className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+                  <div>
+                    <div className="font-bold text-sky-700 dark:text-sky-400">Thắng 2-1 / 3-2</div>
+                    <div className="text-[10px] text-slate-400">Thắng sát nút</div>
+                  </div>
+                  <input
+                    type="number"
+                    value={ptsWinClose}
+                    onChange={(e) => setPtsWinClose(Number(e.target.value))}
+                    className="w-14 px-2 py-1 text-center font-mono font-black bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg"
+                  />
+                </div>
+                <div className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+                  <div>
+                    <div className="font-bold text-amber-700 dark:text-amber-400">Thua 1-2 / 2-3</div>
+                    <div className="text-[10px] text-slate-400">Thua sát nút</div>
+                  </div>
+                  <input
+                    type="number"
+                    value={ptsLossClose}
+                    onChange={(e) => setPtsLossClose(Number(e.target.value))}
+                    className="w-14 px-2 py-1 text-center font-mono font-black bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg"
+                  />
+                </div>
+                <div className="p-2 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+                  <div>
+                    <div className="font-bold text-rose-700 dark:text-rose-400">Thua 0-2 / 0-3 (1-3)</div>
+                    <div className="text-[10px] text-slate-400">Thua cách biệt</div>
+                  </div>
+                  <input
+                    type="number"
+                    value={ptsLossClear}
+                    onChange={(e) => setPtsLossClear(Number(e.target.value))}
+                    className="w-14 px-2 py-1 text-center font-mono font-black bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg"
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
             <div className="p-3 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
               <div className="flex items-center gap-1">
-                <span>Thắng:</span>
+                <span className="font-semibold">Thắng:</span>
                 <input
                   type="number"
                   value={ptsWin}
                   onChange={(e) => setPtsWin(Number(e.target.value))}
-                  className="w-12 px-1 py-0.5 text-center bg-white dark:bg-slate-900 border rounded"
+                  className="w-12 px-1 py-0.5 text-center font-mono font-bold bg-white dark:bg-slate-900 border rounded"
                 />
               </div>
               <div className="flex items-center gap-1">
-                <span>Hòa:</span>
+                <span className="font-semibold">Hòa:</span>
                 <input
                   type="number"
                   value={ptsDraw}
                   onChange={(e) => setPtsDraw(Number(e.target.value))}
-                  className="w-12 px-1 py-0.5 text-center bg-white dark:bg-slate-900 border rounded"
+                  className="w-12 px-1 py-0.5 text-center font-mono font-bold bg-white dark:bg-slate-900 border rounded"
                 />
               </div>
               <div className="flex items-center gap-1">
-                <span>Thua:</span>
+                <span className="font-semibold">Thua:</span>
                 <input
                   type="number"
                   value={ptsLoss}
                   onChange={(e) => setPtsLoss(Number(e.target.value))}
-                  className="w-12 px-1 py-0.5 text-center bg-white dark:bg-slate-900 border rounded"
+                  className="w-12 px-1 py-0.5 text-center font-mono font-bold bg-white dark:bg-slate-900 border rounded"
                 />
               </div>
             </div>

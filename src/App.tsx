@@ -20,6 +20,8 @@ import {
   INITIAL_SPORTS,
   INITIAL_TEAMS,
   INITIAL_USER_ACCOUNTS,
+  computeSetMatchTournamentPoints,
+  getEffectiveSetPointRules,
   loadTournamentState,
   saveTournamentState,
 } from './services/initialData';
@@ -348,6 +350,7 @@ export default function App() {
     const ptsLoss = currentSport?.ptsLoss ?? 0;
     const isFootball = config.activeSportId === 'football';
     const maxSets = currentSport?.maxSets || 3;
+    const setPointRules = getEffectiveSetPointRules(currentSport, config);
 
     const result: Record<string, StandingItem[]> = {};
 
@@ -585,48 +588,27 @@ export default function App() {
           aStats.ptsFor += aPointsTotal;
           aStats.ptsAgainst += hPointsTotal;
 
-          const useStandardSetPoints = ptsWin === 3 && ptsLoss === 0;
+          const matchPts = computeSetMatchTournamentPoints(hSets, aSets, setPointRules);
 
           if (hSets > aSets) {
             hStats.won += 1;
             hStats.form.push('W');
             aStats.lost += 1;
             aStats.form.push('L');
-            if (useStandardSetPoints) {
-              // 2-0, 3-0, 3-1 => 3-0 pts; 2-1, 3-2 => 2-1 pts
-              if (hSets - aSets >= 2) {
-                hStats.points += 3;
-                aStats.points += 0;
-              } else {
-                hStats.points += 2;
-                aStats.points += 1;
-              }
-            } else {
-              hStats.points += ptsWin;
-              aStats.points += ptsLoss;
-            }
+            hStats.points += matchPts.homePts;
+            aStats.points += matchPts.awayPts;
           } else if (aSets > hSets) {
             aStats.won += 1;
             aStats.form.push('W');
             hStats.lost += 1;
             hStats.form.push('L');
-            if (useStandardSetPoints) {
-              if (aSets - hSets >= 2) {
-                aStats.points += 3;
-                hStats.points += 0;
-              } else {
-                aStats.points += 2;
-                hStats.points += 1;
-              }
-            } else {
-              aStats.points += ptsWin;
-              hStats.points += ptsLoss;
-            }
+            hStats.points += matchPts.homePts;
+            aStats.points += matchPts.awayPts;
           } else if (hSets === aSets && (hSets > 0 || aSets > 0)) {
             hStats.drawn += 1;
             aStats.drawn += 1;
-            hStats.points += ptsDraw;
-            aStats.points += ptsDraw;
+            hStats.points += matchPts.homePts;
+            aStats.points += matchPts.awayPts;
             hStats.form.push('D');
             aStats.form.push('D');
           }
@@ -2022,6 +2004,36 @@ export default function App() {
                 'config',
                 'Tiêu chí xếp hạng & ưu tiên',
                 auditNote || `Cập nhật danh sách tiêu chí xếp hạng (${crit.filter((c) => c.enabled).length} tiêu chí bật)`
+              );
+            }}
+            onUpdateSetPointRules={(rules, auditNote) => {
+              handleUpdateConfig((prev) => ({ ...prev, setPointRules: rules }));
+              setSports((prev) =>
+                prev.map((sp) => {
+                  if (sp.id !== config.activeSportId) return sp;
+                  const updatedSport: Sport = {
+                    ...sp,
+                    pointScheme: rules.mode === 'fixed' ? 'custom' : 'standard',
+                    ptsWin: rules.mode === 'fixed' ? rules.fixedWinPts : rules.winClearPts,
+                    ptsWinClose: rules.winClosePts,
+                    ptsLossClose: rules.lossClosePts,
+                    ptsLossClear: rules.lossClearPts,
+                    ptsDraw: rules.fixedDrawPts,
+                    ptsLoss: rules.mode === 'fixed' ? rules.fixedLossPts : rules.lossClearPts,
+                    setPointRules: rules,
+                  };
+                  syncSportToFirestore(updatedSport);
+                  return updatedSport;
+                })
+              );
+              logAuditAction(
+                'update',
+                'config',
+                'Quy định tính điểm trận đấu',
+                auditNote ||
+                  (rules.mode === 'set_score'
+                    ? `Cập nhật điểm theo tỉ số Set: Thắng 2-0/3-0 (${rules.winClearPts}đ), Thắng 2-1/3-2 (${rules.winClosePts}đ), Thua 1-2/2-3 (${rules.lossClosePts}đ), Thua 0-2/0-3 (${rules.lossClearPts}đ)`
+                    : `Cập nhật điểm cố định: Thắng (${rules.fixedWinPts}đ), Hòa (${rules.fixedDrawPts}đ), Thua (${rules.fixedLossPts}đ)`)
               );
             }}
           />

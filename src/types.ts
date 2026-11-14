@@ -63,6 +63,17 @@ export interface SportCategory {
   type?: 'singles' | 'doubles' | 'team';
 }
 
+export interface SetPointRules {
+  mode: 'set_score' | 'fixed'; // 'set_score': Tính điểm theo tỉ số Set (2-0/3-0 vs 2-1/3-2); 'fixed': Điểm cố định Thắng/Hòa/Thua
+  winClearPts: number;  // Điểm khi thắng 2-0 (3 set) hoặc 3-0, 3-1 (5 set) — mặc định: 3
+  winClosePts: number;  // Điểm khi thắng 2-1 (3 set) hoặc 3-2 (5 set) — mặc định: 2
+  lossClosePts: number; // Điểm khi thua 1-2 (3 set) hoặc 2-3 (5 set) — mặc định: 1
+  lossClearPts: number; // Điểm khi thua 0-2 (3 set) hoặc 0-3, 1-3 (5 set) — mặc định: 0
+  fixedWinPts: number;  // Điểm thắng cố định (khi chọn mode = 'fixed') — mặc định: 3
+  fixedDrawPts: number; // Điểm hòa cố định — mặc định: 1
+  fixedLossPts: number; // Điểm thua cố định — mặc định: 0
+}
+
 export interface Sport {
   id: string;
   name: string;
@@ -72,6 +83,10 @@ export interface Sport {
   ptsWin: number;
   ptsDraw: number;
   ptsLoss: number;
+  ptsWinClose?: number;  // Điểm thắng sát nút (2-1 hoặc 3-2), mặc định 2
+  ptsLossClose?: number; // Điểm thua sát nút (1-2 hoặc 2-3), mặc định 1
+  ptsLossClear?: number; // Điểm thua cách biệt (0-2 hoặc 0-3), mặc định 0
+  setPointRules?: SetPointRules;
   icon?: string;
   description?: string;
   categories?: SportCategory[]; // Multiple categories / events per sport
@@ -201,6 +216,7 @@ export interface TournamentConfig {
   customGroups: string[];
   venues?: VenueConfig[]; // Tournament locations (Điểm chính, Phân hiệu)
   rankingCriteria: RankingCriterionConfig[];
+  setPointRules?: SetPointRules; // Quy tắc tính điểm trận đấu theo tỉ số Set do BTC quy định
   themeColor: 'blue' | 'emerald' | 'amber' | 'rose' | 'violet';
   e2eeEnabled: boolean;
   e2eePassphraseHash: string;

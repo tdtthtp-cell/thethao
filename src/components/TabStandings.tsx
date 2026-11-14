@@ -19,11 +19,16 @@ import {
   RankingCriterionConfig,
   RankingCriterionRule,
   RankingCriterionType,
+  SetPointRules,
   StandingItem,
   TournamentConfig,
   UserProfile,
 } from '../types';
-import { DEFAULT_RANKING_CRITERIA } from '../services/initialData';
+import {
+  DEFAULT_RANKING_CRITERIA,
+  DEFAULT_SET_POINT_RULES,
+  getEffectiveSetPointRules,
+} from '../services/initialData';
 
 export const RANKING_RULE_OPTIONS: {
   value: RankingCriterionRule;
@@ -131,6 +136,7 @@ interface TabStandingsProps {
   config: TournamentConfig;
   user: UserProfile;
   onUpdateRankingCriteria: (criteria: RankingCriterionConfig[], auditNote?: string) => void;
+  onUpdateSetPointRules?: (rules: SetPointRules, auditNote?: string) => void;
   onOpenLogin?: () => void;
 }
 
@@ -139,10 +145,25 @@ export const TabStandings: React.FC<TabStandingsProps> = ({
   config,
   user,
   onUpdateRankingCriteria,
+  onUpdateSetPointRules,
   onOpenLogin,
 }) => {
   const [selectedGroup, setSelectedGroup] = useState<string>('ALL');
   const [showCriteriaModal, setShowCriteriaModal] = useState(false);
+
+  const effectivePointRules = getEffectiveSetPointRules(null, config);
+
+  const handlePointRuleChange = (patch: Partial<SetPointRules>, note?: string) => {
+    if (!requireAuth()) return;
+    const next: SetPointRules = {
+      ...DEFAULT_SET_POINT_RULES,
+      ...effectivePointRules,
+      ...patch,
+    };
+    if (onUpdateSetPointRules) {
+      onUpdateSetPointRules(next, note);
+    }
+  };
 
   // Editing state for an existing criterion
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -341,8 +362,52 @@ export const TabStandings: React.FC<TabStandingsProps> = ({
         </div>
       </div>
 
-      {/* Active Ranking Criteria Summary Bar */}
-      <div className="bg-white dark:bg-slate-900 px-4 py-3 rounded-2xl border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center justify-between gap-2 text-xs">
+      {/* Active Point Rules & Ranking Criteria Summary Bar */}
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-2.5 text-xs">
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="font-bold text-slate-500 dark:text-slate-400 mr-1">
+              Quy định tính điểm trận đấu (BTC):
+            </span>
+            {effectivePointRules.mode === 'set_score' ? (
+              <>
+                <span className="px-2.5 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-bold text-[11px]">
+                  Thắng 2-0 / 3-0: +{effectivePointRules.winClearPts}đ
+                </span>
+                <span className="px-2.5 py-0.5 rounded-lg bg-sky-50 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 font-bold text-[11px]">
+                  Thắng 2-1 / 3-2: +{effectivePointRules.winClosePts}đ
+                </span>
+                <span className="px-2.5 py-0.5 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 font-bold text-[11px]">
+                  Thua 1-2 / 2-3: +{effectivePointRules.lossClosePts}đ
+                </span>
+                <span className="px-2.5 py-0.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-bold text-[11px]">
+                  Thua 0-2 / 0-3: +{effectivePointRules.lossClearPts}đ
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="px-2.5 py-0.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-bold text-[11px]">
+                  Thắng trận: +{effectivePointRules.fixedWinPts}đ
+                </span>
+                <span className="px-2.5 py-0.5 rounded-lg bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 font-bold text-[11px]">
+                  Hòa: +{effectivePointRules.fixedDrawPts}đ
+                </span>
+                <span className="px-2.5 py-0.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-bold text-[11px]">
+                  Thua trận: +{effectivePointRules.fixedLossPts}đ
+                </span>
+              </>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCriteriaModal(true)}
+            className="text-sky-600 dark:text-sky-400 hover:underline font-bold text-xs flex items-center gap-1 shrink-0 cursor-pointer"
+          >
+            <Edit2 className="w-3 h-3" />
+            <span>Tùy chỉnh điểm & tiêu chí</span>
+          </button>
+        </div>
+
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="font-bold text-slate-500 dark:text-slate-400 mr-1">
             Thứ tự ưu tiên xếp hạng:
@@ -361,14 +426,6 @@ export const TabStandings: React.FC<TabStandingsProps> = ({
               </span>
             ))}
         </div>
-        <button
-          type="button"
-          onClick={() => setShowCriteriaModal(true)}
-          className="text-sky-600 dark:text-sky-400 hover:underline font-bold text-xs flex items-center gap-1 shrink-0 cursor-pointer"
-        >
-          <Edit2 className="w-3 h-3" />
-          <span>Thêm / Chỉnh sửa tiêu chí</span>
-        </button>
       </div>
 
       {/* Group Standings Tables */}
@@ -606,14 +663,236 @@ export const TabStandings: React.FC<TabStandingsProps> = ({
               </div>
             )}
 
-            {/* Top Action Toolbar for BTC */}
+            {/* 1. Match Point Calculation Rules (Quy định cách tính điểm trận đấu của BTC) */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3 shrink-0 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Trophy className="w-4 h-4 text-amber-500" />
+                    1. Quy Định Cách Tính Điểm Trận Đấu (Do Ban Tổ Chức Quy Định)
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Tùy chỉnh điểm thưởng cho từng trận thắng/thua theo tỉ số Set (2-0, 3-0 hoặc 2-1, 3-2) hoặc điểm cố định
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handlePointRuleChange(
+                        {
+                          mode: 'set_score',
+                          winClearPts: 3,
+                          winClosePts: 2,
+                          lossClosePts: 1,
+                          lossClearPts: 0,
+                        },
+                        'Áp dụng quy tắc điểm Bóng chuyền chuẩn trường học (Thắng 2-0/3-0: 3đ, Thắng 2-1/3-2: 2đ, Thua 1-2/2-3: 1đ, Thua 0-2/0-3: 0đ)'
+                      )
+                    }
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                      effectivePointRules.mode === 'set_score'
+                        ? 'bg-sky-600 text-white border-sky-600'
+                        : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    Theo tỉ số Set (3-2-1-0)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handlePointRuleChange(
+                        {
+                          mode: 'fixed',
+                          fixedWinPts: 2,
+                          fixedDrawPts: 1,
+                          fixedLossPts: 1,
+                        },
+                        'Áp dụng quy tắc điểm cố định (Thắng 2đ, Thua 1đ)'
+                      )
+                    }
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                      effectivePointRules.mode === 'fixed' && effectivePointRules.fixedWinPts === 2
+                        ? 'bg-sky-600 text-white border-sky-600'
+                        : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    Cố định (Thắng 2đ - Thua 1đ)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handlePointRuleChange(
+                        {
+                          mode: 'fixed',
+                          fixedWinPts: 3,
+                          fixedDrawPts: 1,
+                          fixedLossPts: 0,
+                        },
+                        'Áp dụng quy tắc điểm cố định (Thắng 3đ, Hòa 1đ, Thua 0đ)'
+                      )
+                    }
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                      effectivePointRules.mode === 'fixed' && effectivePointRules.fixedWinPts === 3
+                        ? 'bg-sky-600 text-white border-sky-600'
+                        : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                    }`}
+                  >
+                    Cố định (Thắng 3đ - Thua 0đ)
+                  </button>
+                </div>
+              </div>
+
+              {effectivePointRules.mode === 'set_score' ? (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-emerald-200 dark:border-emerald-900/60 space-y-1">
+                    <div className="font-extrabold text-emerald-700 dark:text-emerald-400 text-[11px]">
+                      Thắng 2-0 hoặc 3-0 (3-1)
+                    </div>
+                    <div className="text-[10px] text-slate-400">Thắng cách biệt (3 set / 5 set)</div>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <input
+                        type="number"
+                        disabled={!canManageCriteria}
+                        value={effectivePointRules.winClearPts}
+                        onChange={(e) =>
+                          handlePointRuleChange(
+                            { winClearPts: Number(e.target.value) || 0 },
+                            `Đổi điểm Thắng 2-0/3-0 thành ${e.target.value} điểm`
+                          )
+                        }
+                        className="w-16 px-2 py-1 text-center font-mono font-black text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
+                      />
+                      <span className="text-[11px] font-bold text-slate-500">điểm</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-sky-200 dark:border-sky-900/60 space-y-1">
+                    <div className="font-extrabold text-sky-700 dark:text-sky-400 text-[11px]">
+                      Thắng 2-1 hoặc 3-2
+                    </div>
+                    <div className="text-[10px] text-slate-400">Thắng sát nút (3 set / 5 set)</div>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <input
+                        type="number"
+                        disabled={!canManageCriteria}
+                        value={effectivePointRules.winClosePts}
+                        onChange={(e) =>
+                          handlePointRuleChange(
+                            { winClosePts: Number(e.target.value) || 0 },
+                            `Đổi điểm Thắng 2-1/3-2 thành ${e.target.value} điểm`
+                          )
+                        }
+                        className="w-16 px-2 py-1 text-center font-mono font-black text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
+                      />
+                      <span className="text-[11px] font-bold text-slate-500">điểm</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-amber-200 dark:border-amber-900/60 space-y-1">
+                    <div className="font-extrabold text-amber-700 dark:text-amber-400 text-[11px]">
+                      Thua 1-2 hoặc 2-3
+                    </div>
+                    <div className="text-[10px] text-slate-400">Thua sát nút được cộng điểm</div>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <input
+                        type="number"
+                        disabled={!canManageCriteria}
+                        value={effectivePointRules.lossClosePts}
+                        onChange={(e) =>
+                          handlePointRuleChange(
+                            { lossClosePts: Number(e.target.value) || 0 },
+                            `Đổi điểm Thua 1-2/2-3 thành ${e.target.value} điểm`
+                          )
+                        }
+                        className="w-16 px-2 py-1 text-center font-mono font-black text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
+                      />
+                      <span className="text-[11px] font-bold text-slate-500">điểm</span>
+                    </div>
+                  </div>
+
+                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-rose-200 dark:border-rose-900/60 space-y-1">
+                    <div className="font-extrabold text-rose-700 dark:text-rose-400 text-[11px]">
+                      Thua 0-2 hoặc 0-3 (1-3)
+                    </div>
+                    <div className="text-[10px] text-slate-400">Thua cách biệt</div>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <input
+                        type="number"
+                        disabled={!canManageCriteria}
+                        value={effectivePointRules.lossClearPts}
+                        onChange={(e) =>
+                          handlePointRuleChange(
+                            { lossClearPts: Number(e.target.value) || 0 },
+                            `Đổi điểm Thua 0-2/0-3 thành ${e.target.value} điểm`
+                          )
+                        }
+                        className="w-16 px-2 py-1 text-center font-mono font-black text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
+                      />
+                      <span className="text-[11px] font-bold text-slate-500">điểm</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-3 gap-2.5">
+                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                    <span className="font-bold text-emerald-700 dark:text-emerald-400">Mọi trận Thắng:</span>
+                    <input
+                      type="number"
+                      disabled={!canManageCriteria}
+                      value={effectivePointRules.fixedWinPts}
+                      onChange={(e) =>
+                        handlePointRuleChange(
+                          { fixedWinPts: Number(e.target.value) || 0 },
+                          `Đổi điểm Thắng cố định thành ${e.target.value} điểm`
+                        )
+                      }
+                      className="w-16 px-2 py-1 text-center font-mono font-black text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
+                    />
+                  </div>
+                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                    <span className="font-bold text-amber-700 dark:text-amber-400">Trận Hòa:</span>
+                    <input
+                      type="number"
+                      disabled={!canManageCriteria}
+                      value={effectivePointRules.fixedDrawPts}
+                      onChange={(e) =>
+                        handlePointRuleChange(
+                          { fixedDrawPts: Number(e.target.value) || 0 },
+                          `Đổi điểm Hòa cố định thành ${e.target.value} điểm`
+                        )
+                      }
+                      className="w-16 px-2 py-1 text-center font-mono font-black text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
+                    />
+                  </div>
+                  <div className="p-2.5 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                    <span className="font-bold text-rose-700 dark:text-rose-400">Mọi trận Thua:</span>
+                    <input
+                      type="number"
+                      disabled={!canManageCriteria}
+                      value={effectivePointRules.fixedLossPts}
+                      onChange={(e) =>
+                        handlePointRuleChange(
+                          { fixedLossPts: Number(e.target.value) || 0 },
+                          `Đổi điểm Thua cố định thành ${e.target.value} điểm`
+                        )
+                      }
+                      className="w-16 px-2 py-1 text-center font-mono font-black text-sm bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-lg outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 2. Top Action Toolbar for Ranking Criteria */}
             <div className="flex flex-wrap items-center justify-between gap-2 shrink-0">
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                Đang áp dụng{' '}
-                <strong className="text-sky-600 dark:text-sky-400">
+              <div className="text-xs font-extrabold text-slate-800 dark:text-slate-200">
+                2. Thứ Tự Ưu Tiên Các Tiêu Chí Xếp Hạng (Đang bật{' '}
+                <span className="text-sky-600 dark:text-sky-400">
                   {config.rankingCriteria.filter((c) => c.enabled).length}
-                </strong>{' '}
-                / {config.rankingCriteria.length} tiêu chí xếp hạng
+                </span>{' '}
+                / {config.rankingCriteria.length} tiêu chí)
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
