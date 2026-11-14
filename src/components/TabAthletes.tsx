@@ -34,6 +34,7 @@ import { Athlete, Team, TournamentConfig, UserProfile } from '../types';
 import { decryptText, maskSensitive } from '../services/crypto';
 import { AthleteExcelImportModal } from './AthleteExcelImportModal';
 import { downloadAthleteImportTemplateExcel } from '../services/teamImport';
+import { exportTeamAthletesToExcel, exportAllTeamsAthletesToExcel } from '../services/export';
 
 interface TabAthletesProps {
   athletes: Athlete[];
@@ -350,6 +351,34 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
               <span>Nhập VĐV Excel</span>
             </button>
           )}
+
+          {/* Export Athletes to Excel (Per-team or All Teams by sheet) */}
+          <button
+            type="button"
+            onClick={() => {
+              const targetTeam = teams.find(
+                (t) =>
+                  t.id === selectedTeamFilter ||
+                  t.name.toLowerCase() === selectedTeamFilter.toLowerCase()
+              );
+              if (targetTeam) {
+                exportTeamAthletesToExcel(targetTeam, athletes, config);
+              } else {
+                exportAllTeamsAthletesToExcel(teams, filteredAthletes, config);
+              }
+            }}
+            className="px-3.5 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+            title={
+              selectedTeamFilter !== 'ALL'
+                ? 'Xuất danh sách VĐV của đội đang chọn ra file Excel (.xlsx)'
+                : 'Xuất danh sách VĐV của từng đội ra file Excel (mỗi đội 1 Sheet)'
+            }
+          >
+            <Download className="w-4 h-4" />
+            <span>
+              {selectedTeamFilter !== 'ALL' ? 'Xuất Excel Đội Này' : 'Xuất VĐV Các Đội (.xlsx)'}
+            </span>
+          </button>
 
           {/* Download Athlete Template */}
           <button
@@ -715,7 +744,18 @@ export const TabAthletes: React.FC<TabAthletesProps> = ({
                     </div>
 
                     {/* Team Header Actions */}
-                    <div className="flex items-center gap-2 ml-auto">
+                    <div className="flex flex-wrap items-center gap-2 ml-auto">
+                      {/* Direct Export Team Athletes to Excel */}
+                      <button
+                        type="button"
+                        onClick={() => exportTeamAthletesToExcel(team, list, config)}
+                        className="px-2.5 py-1.5 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/60 border border-sky-200/80 dark:border-sky-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                        title={`Xuất danh sách VĐV của đội ${team.name} ra file Excel (.xlsx)`}
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Xuất Excel</span>
+                      </button>
+
                       {canRegister ? (
                         <button
                           type="button"

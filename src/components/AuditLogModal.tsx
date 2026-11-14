@@ -17,6 +17,8 @@ import {
   Clock,
   Sparkles,
   Download,
+  Lock,
+  LogIn,
 } from 'lucide-react';
 import { AuditLog, AuditAction, AuditEntityType, UserProfile } from '../types';
 
@@ -26,6 +28,7 @@ interface AuditLogModalProps {
   logs: AuditLog[];
   user: UserProfile;
   onClearLogs?: () => void;
+  onOpenLogin?: () => void;
 }
 
 export const AuditLogModal: React.FC<AuditLogModalProps> = ({
@@ -34,6 +37,7 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({
   logs,
   user,
   onClearLogs,
+  onOpenLogin,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [entityFilter, setEntityFilter] = useState<'ALL' | AuditEntityType>('ALL');
@@ -41,6 +45,7 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({
   const [showClearConfirm, setShowClearConfirm] = useState(false);
 
   const isAdmin = user.role === 'admin';
+  const isLoggedIn = Boolean(user && user.role && user.role !== 'viewer');
 
   // Sort logs by timestamp descending (newest first)
   const sortedLogs = useMemo(() => {
@@ -151,7 +156,7 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({
   };
 
   const handleExportCSV = () => {
-    if (logs.length === 0) return;
+    if (!isLoggedIn || logs.length === 0) return;
     const headers = ['STT', 'Thời Gian', 'Người Thực Hiện', 'Vai Trò', 'Hành Động', 'Đối Tượng', 'Tên Đối Tượng', 'Mô Tả Chi Tiết'];
     const rows = filteredLogs.map((log, idx) => [
       idx + 1,
@@ -203,16 +208,18 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleExportCSV}
-              disabled={filteredLogs.length === 0}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-              title="Xuất nhật ký thành file Excel/CSV"
-            >
-              <Download className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-              <span className="hidden sm:inline">Xuất CSV</span>
-            </button>
+            {isLoggedIn && (
+              <button
+                type="button"
+                onClick={handleExportCSV}
+                disabled={filteredLogs.length === 0}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                title="Xuất nhật ký thành file Excel/CSV"
+              >
+                <Download className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                <span className="hidden sm:inline">Xuất CSV</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}
@@ -223,69 +230,100 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({
           </div>
         </div>
 
-        {/* Filter Bar */}
-        <div className="p-4 bg-slate-50/40 dark:bg-slate-950/40 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
-          <div className="flex items-center gap-2 flex-1 min-w-[240px]">
-            <div className="relative flex-1">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Tìm theo người thực hiện, tên đội, VĐV, trận đấu..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-              />
+        {/* Filter Bar (Only visible when logged in) */}
+        {isLoggedIn && (
+          <div className="p-4 bg-slate-50/40 dark:bg-slate-950/40 border-b border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <div className="flex items-center gap-2 flex-1 min-w-[240px]">
+              <div className="relative flex-1">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Tìm theo người thực hiện, tên đội, VĐV, trận đấu..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Entity Filter */}
+              <select
+                value={entityFilter}
+                onChange={(e) => setEntityFilter(e.target.value as any)}
+                className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold outline-none"
+              >
+                <option value="ALL">Tất cả đối tượng</option>
+                <option value="team">🛡️ Đội bóng</option>
+                <option value="athlete">👥 Vận động viên</option>
+                <option value="match">📅 Trận đấu</option>
+                <option value="schedule">⚡ Lịch thi đấu</option>
+              </select>
+
+              {/* Action Filter */}
+              <select
+                value={actionFilter}
+                onChange={(e) => setActionFilter(e.target.value as any)}
+                className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold outline-none"
+              >
+                <option value="ALL">Tất cả hành động</option>
+                <option value="create">+ Thêm mới</option>
+                <option value="update">✎ Chỉnh sửa</option>
+                <option value="delete">🗑 Xóa</option>
+                <option value="import">📊 Nhập Excel</option>
+                <option value="reorder">↕ Đổi thứ tự</option>
+                <option value="score">⚽ Cập nhật điểm</option>
+                <option value="approve">✓ Duyệt hồ sơ</option>
+                <option value="clear">⚠️ Làm sạch</option>
+              </select>
+
+              {isAdmin && onClearLogs && logs.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowClearConfirm(true)}
+                  className="px-2.5 py-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                  title="Làm sạch lịch sử nhật ký"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Xóa nhật ký</span>
+                </button>
+              )}
             </div>
           </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Entity Filter */}
-            <select
-              value={entityFilter}
-              onChange={(e) => setEntityFilter(e.target.value as any)}
-              className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold outline-none"
-            >
-              <option value="ALL">Tất cả đối tượng</option>
-              <option value="team">🛡️ Đội bóng</option>
-              <option value="athlete">👥 Vận động viên</option>
-              <option value="match">📅 Trận đấu</option>
-              <option value="schedule">⚡ Lịch thi đấu</option>
-            </select>
-
-            {/* Action Filter */}
-            <select
-              value={actionFilter}
-              onChange={(e) => setActionFilter(e.target.value as any)}
-              className="px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold outline-none"
-            >
-              <option value="ALL">Tất cả hành động</option>
-              <option value="create">+ Thêm mới</option>
-              <option value="update">✎ Chỉnh sửa</option>
-              <option value="delete">🗑 Xóa</option>
-              <option value="import">📊 Nhập Excel</option>
-              <option value="reorder">↕ Đổi thứ tự</option>
-              <option value="score">⚽ Cập nhật điểm</option>
-              <option value="approve">✓ Duyệt hồ sơ</option>
-              <option value="clear">⚠️ Làm sạch</option>
-            </select>
-
-            {isAdmin && onClearLogs && logs.length > 0 && (
-              <button
-                type="button"
-                onClick={() => setShowClearConfirm(true)}
-                className="px-2.5 py-1.5 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                title="Làm sạch lịch sử nhật ký"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Xóa nhật ký</span>
-              </button>
-            )}
-          </div>
-        </div>
+        )}
 
         {/* Content Body */}
         <div className="p-4 sm:p-5 overflow-y-auto flex-1 space-y-3">
-          {filteredLogs.length === 0 ? (
+          {!isLoggedIn ? (
+            <div className="p-12 text-center space-y-4">
+              <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-950/70 text-amber-600 dark:text-amber-400 flex items-center justify-center mx-auto border border-amber-200 dark:border-amber-800">
+                <Lock className="w-7 h-7" />
+              </div>
+              <div className="space-y-1.5 max-w-md mx-auto">
+                <h4 className="font-extrabold text-base text-slate-900 dark:text-white">
+                  Nhật Ký Hoạt Động Đang Bị Khóa
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Chức năng xem Nhật ký quản lý & lịch sử thao tác (Audit Log) chỉ dành cho thành viên đã đăng nhập. Khách xem chưa đăng nhập không có quyền truy cập dữ liệu này.
+                </p>
+              </div>
+              {onOpenLogin && (
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenLogin();
+                    }}
+                    className="px-5 py-2.5 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white rounded-xl text-xs font-bold transition inline-flex items-center gap-2 shadow-md cursor-pointer"
+                  >
+                    <LogIn className="w-4 h-4" />
+                    <span>Đăng Nhập Để Xem Nhật Ký</span>
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : filteredLogs.length === 0 ? (
             <div className="p-12 text-center space-y-2">
               <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto">
                 <History className="w-6 h-6" />
@@ -370,7 +408,13 @@ export const AuditLogModal: React.FC<AuditLogModalProps> = ({
         {/* Footer */}
         <div className="p-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between text-xs text-slate-400 shrink-0">
           <div>
-            Hiển thị <strong>{filteredLogs.length}</strong> / {logs.length} bản ghi nhật ký thao tác
+            {isLoggedIn ? (
+              <>
+                Hiển thị <strong>{filteredLogs.length}</strong> / {logs.length} bản ghi nhật ký thao tác
+              </>
+            ) : (
+              <span>Yêu cầu xác thực tài khoản để xem nhật ký hoạt động</span>
+            )}
           </div>
 
           <button

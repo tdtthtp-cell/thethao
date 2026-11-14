@@ -50,8 +50,8 @@ export const TabOverview: React.FC<TabOverviewProps> = ({
     <div className="space-y-6">
       {/* Hero Tournament Banner */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-sky-950 to-slate-900 p-6 sm:p-8 text-white shadow-xl border border-sky-900/40">
-        <div className="relative z-10 max-w-3xl space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="relative z-10 max-w-4xl mx-auto text-center flex flex-col items-center space-y-3">
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <div className="inline-flex items-center gap-2 rounded-full bg-sky-500/20 px-3 py-1 text-xs font-semibold text-sky-300 backdrop-blur-md border border-sky-500/30">
               <ShieldCheck className="w-3.5 h-3.5 text-sky-400" />
               <span>Hệ thống bảo mật mã hóa đầu cuối E2EE AES-256</span>
@@ -69,15 +69,15 @@ export const TabOverview: React.FC<TabOverviewProps> = ({
             </div>
           </div>
 
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white leading-tight">
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-white leading-tight text-center uppercase">
             {config.tournamentName}
           </h2>
 
-          <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-2xl">
+          <p className="text-sm sm:text-base text-slate-300 leading-relaxed max-w-2xl mx-auto text-center">
             Chào mừng đến với hệ thống quản lý thi đấu thể thao trường <strong>{config.schoolName}</strong> ({config.deptName}). Theo dõi lịch đấu, cập nhật tỉ số trực tiếp thời gian thực, bảng xếp hạng tự động và xuất báo cáo chuẩn hành chính.
           </p>
 
-          <div className="flex flex-wrap items-center gap-3 pt-2">
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
             <button
               onClick={() => onNavigateTab('matches')}
               className="inline-flex items-center gap-2 rounded-xl bg-sky-600 px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-sky-500 transition cursor-pointer"

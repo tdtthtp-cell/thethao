@@ -135,29 +135,35 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800 transition-colors shadow-xs no-print">
       {/* 1. Main Header Row */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between gap-3 h-16">
-          {/* Brand & School Title */}
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center text-white shadow-xs">
+        <div className="flex items-center justify-between lg:grid lg:grid-cols-[1fr_auto_1fr] gap-3 py-2.5 min-h-[64px]">
+          {/* Left: Brand & School Info */}
+          <div className="flex items-center gap-3 shrink-0 lg:justify-self-start">
+            <div className="w-10 h-10 rounded-xl bg-sky-600 flex items-center justify-center text-white shadow-xs shrink-0">
               <Trophy className="w-5 h-5 text-amber-300" />
             </div>
             <div>
-              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                <span>{config.schoolName}</span>
-                <span aria-hidden="true">·</span>
+              <div className="text-xs font-extrabold text-slate-800 dark:text-slate-100 leading-tight">
+                {config.schoolName}
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 dark:text-slate-400 mt-0.5">
                 <span>{config.deptName}</span>
-                <span className="hidden sm:inline-block px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 font-bold">
+                <span aria-hidden="true">·</span>
+                <span className="inline-block px-1.5 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-[10px] text-slate-600 dark:text-slate-300 font-bold">
                   Năm {config.year || new Date().getFullYear()}
                 </span>
               </div>
-              <h1 className="text-sm sm:text-base md:text-lg font-extrabold tracking-tight text-slate-900 dark:text-white leading-tight truncate max-w-[190px] sm:max-w-xs md:max-w-md">
-                {config.tournamentName}
-              </h1>
             </div>
           </div>
 
-          {/* Actions: Grouped Inward Utility Cluster + Explicit Login/Logout Buttons */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Center: Tournament Name (Centered horizontally on desktop) */}
+          <div className="hidden lg:flex flex-col items-center justify-center text-center px-3 lg:justify-self-center">
+            <h1 className="text-base xl:text-lg font-black tracking-tight text-slate-900 dark:text-white uppercase text-center leading-snug">
+              {config.tournamentName}
+            </h1>
+          </div>
+
+          {/* Right: Actions - Grouped Inward Utility Cluster + Explicit Login/Logout Buttons */}
+          <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0 lg:justify-self-end">
             {/* PWA Install */}
             <PWAInstallButton />
 
@@ -213,20 +219,36 @@ export const Header: React.FC<HeaderProps> = ({
                 )}
               </button>
 
-              {/* Audit Log / History Button */}
+              {/* Audit Log / History Button (Protected: Requires Login) */}
               {onOpenAuditLogs && (
                 <button
                   type="button"
-                  onClick={onOpenAuditLogs}
+                  onClick={() => {
+                    if (!isLoggedIn) {
+                      onOpenAuth();
+                      return;
+                    }
+                    onOpenAuditLogs();
+                  }}
                   className="relative p-2 text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 rounded-xl hover:bg-white dark:hover:bg-slate-700 transition cursor-pointer"
-                  title="Nhật ký quản lý & lịch sử thao tác (Audit Trail)"
+                  title={
+                    isLoggedIn
+                      ? 'Nhật ký quản lý & lịch sử thao tác (Audit Trail)'
+                      : 'Nhật ký hoạt động (Chỉ cho phép xem khi đã đăng nhập)'
+                  }
                   aria-label="Nhật ký quản lý"
                 >
-                  <History className="w-4 h-4 text-indigo-500" />
-                  {auditLogsCount > 0 && (
-                    <span className="absolute top-1 right-1 px-1 min-w-[14px] h-3.5 rounded-full bg-indigo-500 text-white text-[9px] font-extrabold flex items-center justify-center">
-                      {auditLogsCount > 99 ? '99+' : auditLogsCount}
+                  <History className={`w-4 h-4 ${isLoggedIn ? 'text-indigo-500' : 'text-slate-400'}`} />
+                  {!isLoggedIn ? (
+                    <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-amber-500 text-white flex items-center justify-center shadow-2xs">
+                      <Lock className="w-2 h-2" />
                     </span>
+                  ) : (
+                    auditLogsCount > 0 && (
+                      <span className="absolute top-1 right-1 px-1 min-w-[14px] h-3.5 rounded-full bg-indigo-500 text-white text-[9px] font-extrabold flex items-center justify-center">
+                        {auditLogsCount > 99 ? '99+' : auditLogsCount}
+                      </span>
+                    )
                   )}
                 </button>
               )}
@@ -327,6 +349,13 @@ export const Header: React.FC<HeaderProps> = ({
               </div>
             )}
           </div>
+        </div>
+
+        {/* Mobile / Tablet Centered Tournament Name */}
+        <div className="lg:hidden pb-2.5 pt-0.5 text-center border-t border-slate-100 dark:border-slate-800/60">
+          <h1 className="text-xs sm:text-sm md:text-base font-black tracking-tight text-slate-900 dark:text-white uppercase text-center leading-snug">
+            {config.tournamentName}
+          </h1>
         </div>
       </div>
 

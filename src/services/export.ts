@@ -814,3 +814,248 @@ export async function exportEncryptedBackupPackage(data: unknown, password: stri
 export async function importEncryptedBackupPackage(fileContent: string, password: string): Promise<unknown> {
   return await decryptFullDataPackage(fileContent, password);
 }
+
+/**
+ * Sanitize Excel sheet name (max 31 chars, no invalid characters: \ / ? * : [ ])
+ */
+function sanitizeSheetName(raw: string, fallback = 'Sheet'): string {
+  const cleaned = (raw || fallback).replace(/[\\/?*:[\]]/g, '_').trim();
+  return (cleaned || fallback).slice(0, 31);
+}
+
+/**
+ * Export athlete roster of a single team directly to an Excel (.xlsx) file
+ */
+export function exportTeamAthletesToExcel(
+  team: Team,
+  allAthletes: Athlete[],
+  config?: TournamentConfig
+) {
+  const wb = XLSX.utils.book_new();
+
+  const teamAthletes = allAthletes
+    .filter(
+      (a) =>
+        a.teamId === team.id ||
+        a.teamName.trim().toLowerCase() === team.name.trim().toLowerCase()
+    )
+    .sort((a, b) => (a.jerseyNumber || 0) - (b.jerseyNumber || 0));
+
+  const headers = [
+    'STT',
+    'Họ Và Tên Vận Động Viên',
+    'Số Áo',
+    'Đội / Lớp',
+    'Bảng / Khối',
+    'Vị Trí Thi Đấu',
+    'Ngày Sinh (YYYY-MM-DD)',
+    'Trạng Thái Hồ Sơ',
+    'Điểm / Bàn Thắng',
+    'Thẻ Vàng',
+    'Thẻ Đỏ',
+    'MVP',
+    'Ghi Chú',
+  ];
+
+  const rows: (string | number)[][] = teamAthletes.map((ath, idx) => [
+    idx + 1,
+    ath.name,
+    ath.jerseyNumber,
+    team.name,
+    team.group || ath.group || '',
+    ath.position || 'Vận động viên',
+    ath.dateOfBirth || '',
+    ath.status === 'approved'
+      ? 'Đã duyệt'
+      : ath.status === 'pending'
+      ? 'Chờ duyệt'
+      : 'Cần bổ sung',
+    ath.goalsOrPoints || 0,
+    ath.yellowCards || 0,
+    ath.redCards || 0,
+    ath.mvpCount || 0,
+    ath.isCaptain ? 'Đội trưởng' : '',
+  ]);
+
+  const wsRoster = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  wsRoster['!cols'] = [
+    { wch: 6 },  // STT
+    { wch: 28 }, // Họ Và Tên
+    { wch: 10 }, // Số Áo
+    { wch: 16 }, // Đội / Lớp
+    { wch: 18 }, // Bảng / Khối
+    { wch: 22 }, // Vị Trí
+    { wch: 20 }, // Ngày Sinh
+    { wch: 16 }, // Trạng Thái
+    { wch: 16 }, // Điểm/Bàn
+    { wch: 10 }, // Thẻ Vàng
+    { wch: 10 }, // Thẻ Đỏ
+    { wch: 8 },  // MVP
+    { wch: 18 }, // Ghi Chú
+  ];
+
+  const sheetName = sanitizeSheetName(`VDV_${team.name}`, 'DanhSachVDV');
+  XLSX.utils.book_append_sheet(wb, wsRoster, sheetName);
+
+  // Sheet 2: Thông tin chi tiết đội bóng
+  const infoRows: (string | number)[][] = [
+    ['THÔNG TIN ĐỘI THI ĐẤU & DANH SÁCH VẬN ĐỘNG VIÊN'],
+    ['Đơn vị tổ chức:', config ? `${config.schoolName} - ${config.deptName}` : 'Ban Tổ Chức Hội Thao'],
+    ['Giải đấu:', config?.tournamentName || 'Hội Thao Học Sinh'],
+    ['Tên Đội / Lớp:', team.name],
+    ['Bảng / Khối:', team.group],
+    [
+      'Giới tính:',
+      team.gender === 'female' ? 'Nữ' : team.gender === 'mixed' ? 'Hỗn hợp' : 'Nam',
+    ],
+    ['GVCN / HLV phụ trách:', team.coachName || 'Chưa cập nhật'],
+    ['Tổng số VĐV đăng ký:', teamAthletes.length],
+    ['Ngày xuất danh sách:', new Date().toLocaleDateString('vi-VN')],
+  ];
+  const wsInfo = XLSX.utils.aoa_to_sheet(infoRows);
+  wsInfo['!cols'] = [{ wch: 26 }, { wch: 50 }];
+  XLSX.utils.book_append_sheet(wb, wsInfo, 'ThongTinDoi');
+
+  const safeFileName = team.name.replace(/[^a-zA-Z0-9_\u00C0-\u1EF9,-]/g, '_');
+  XLSX.writeFile(wb, `DanhSach_VDV_Doi_${safeFileName}.xlsx`);
+}
+
+/**
+ * Export athlete rosters of all teams into a multi-sheet Excel workbook
+ * (1 summary sheet + 1 dedicated sheet per team)
+ */
+export function exportAllTeamsAthletesToExcel(
+  teams: Team[],
+  allAthletes: Athlete[],
+  config?: TournamentConfig
+) {
+  const wb = XLSX.utils.book_new();
+
+  // 1. Sheet Tổng hợp tất cả VĐV
+  const summaryHeaders = [
+    'STT',
+    'Họ Và Tên Vận Động Viên',
+    'Số Áo',
+    'Đội / Lớp',
+    'Bảng / Khối',
+    'Vị Trí Thi Đấu',
+    'Ngày Sinh (YYYY-MM-DD)',
+    'Trạng Thái Hồ Sơ',
+    'Điểm / Bàn Thắng',
+    'Ghi Chú',
+  ];
+
+  const sortedAthletes = [...allAthletes].sort((a, b) => {
+    const teamCmp = (a.teamName || '').localeCompare(b.teamName || '');
+    if (teamCmp !== 0) return teamCmp;
+    return (a.jerseyNumber || 0) - (b.jerseyNumber || 0);
+  });
+
+  const summaryRows: (string | number)[][] = sortedAthletes.map((ath, idx) => [
+    idx + 1,
+    ath.name,
+    ath.jerseyNumber,
+    ath.teamName,
+    ath.group,
+    ath.position || 'Vận động viên',
+    ath.dateOfBirth || '',
+    ath.status === 'approved'
+      ? 'Đã duyệt'
+      : ath.status === 'pending'
+      ? 'Chờ duyệt'
+      : 'Cần bổ sung',
+    ath.goalsOrPoints || 0,
+    ath.isCaptain ? 'Đội trưởng' : '',
+  ]);
+
+  const wsSummary = XLSX.utils.aoa_to_sheet([
+    [config?.tournamentName || 'DANH SÁCH VẬN ĐỘNG VIÊN CÁC ĐỘI'],
+    [
+      `Đơn vị: ${config?.schoolName || ''} - ${config?.deptName || ''} | Ngày xuất: ${new Date().toLocaleDateString('vi-VN')}`,
+    ],
+    [],
+    summaryHeaders,
+    ...summaryRows,
+  ]);
+  wsSummary['!cols'] = [
+    { wch: 6 },
+    { wch: 28 },
+    { wch: 10 },
+    { wch: 16 },
+    { wch: 18 },
+    { wch: 22 },
+    { wch: 20 },
+    { wch: 16 },
+    { wch: 16 },
+    { wch: 18 },
+  ];
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'TongHop_VDV');
+
+  // 2. Tạo từng Sheet riêng cho mỗi đội
+  const usedSheetNames = new Set<string>(['TongHop_VDV']);
+
+  teams.forEach((team, tIdx) => {
+    const teamAthletes = allAthletes
+      .filter(
+        (a) =>
+          a.teamId === team.id ||
+          a.teamName.trim().toLowerCase() === team.name.trim().toLowerCase()
+      )
+      .sort((a, b) => (a.jerseyNumber || 0) - (b.jerseyNumber || 0));
+
+    const headers = [
+      'STT',
+      'Họ Và Tên Vận Động Viên',
+      'Số Áo',
+      'Đội / Lớp',
+      'Bảng / Khối',
+      'Vị Trí Thi Đấu',
+      'Ngày Sinh (YYYY-MM-DD)',
+      'Trạng Thái Hồ Sơ',
+      'Điểm / Bàn Thắng',
+      'Ghi Chú',
+    ];
+
+    const rows: (string | number)[][] = teamAthletes.map((ath, idx) => [
+      idx + 1,
+      ath.name,
+      ath.jerseyNumber,
+      team.name,
+      team.group || ath.group || '',
+      ath.position || 'Vận động viên',
+      ath.dateOfBirth || '',
+      ath.status === 'approved'
+        ? 'Đã duyệt'
+        : ath.status === 'pending'
+        ? 'Chờ duyệt'
+        : 'Cần bổ sung',
+      ath.goalsOrPoints || 0,
+      ath.isCaptain ? 'Đội trưởng' : '',
+    ]);
+
+    const wsTeam = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    wsTeam['!cols'] = [
+      { wch: 6 },
+      { wch: 28 },
+      { wch: 10 },
+      { wch: 16 },
+      { wch: 18 },
+      { wch: 22 },
+      { wch: 20 },
+      { wch: 16 },
+      { wch: 16 },
+      { wch: 18 },
+    ];
+
+    let candidateName = sanitizeSheetName(`${team.name}_${team.group}`, `Doi_${tIdx + 1}`);
+    if (usedSheetNames.has(candidateName)) {
+      candidateName = sanitizeSheetName(`${tIdx + 1}_${team.name}`, `Doi_${tIdx + 1}`);
+    }
+    usedSheetNames.add(candidateName);
+    XLSX.utils.book_append_sheet(wb, wsTeam, candidateName);
+  });
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `DanhSach_VDV_TheoTungDoi_${dateStr}.xlsx`);
+}
+

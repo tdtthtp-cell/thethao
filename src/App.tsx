@@ -1567,7 +1567,13 @@ export default function App() {
         onTabChange={handleTabChange}
         onOpenReports={() => setIsReportsModalOpen(true)}
         onOpenAuth={() => setIsAuthOpen(true)}
-        onOpenAuditLogs={() => setIsAuditLogOpen(true)}
+        onOpenAuditLogs={() => {
+          if (!currentUser || currentUser.role === 'viewer') {
+            setIsAuthOpen(true);
+            return;
+          }
+          setIsAuditLogOpen(true);
+        }}
         auditLogsCount={auditLogs.length}
         onOpenNotifications={() => setIsNotifDrawerOpen(true)}
         unreadNotificationsCount={unreadNotifCount}
@@ -1930,6 +1936,10 @@ export default function App() {
         logs={auditLogs}
         user={currentUser}
         onClearLogs={handleClearAllAuditLogs}
+        onOpenLogin={() => {
+          setIsAuditLogOpen(false);
+          setIsAuthOpen(true);
+        }}
       />
     </div>
   );
