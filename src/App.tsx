@@ -351,10 +351,64 @@ export default function App() {
 
     const result: Record<string, StandingItem[]> = {};
 
-    // Group teams
-    config.customGroups.forEach((grp) => {
+    // Collect all groups from config.customGroups, teams, and matches so no group is ever missed
+    const canonicalGroupMap = new Map<string, string>();
+    const registerGroup = (rawGrp?: string) => {
+      if (!rawGrp || !rawGrp.trim()) return;
+      const trimmed = rawGrp.trim();
+      const key = trimmed.toLowerCase();
+      if (!canonicalGroupMap.has(key)) {
+        canonicalGroupMap.set(key, trimmed);
+      }
+    };
+
+    (config.customGroups || []).forEach(registerGroup);
+    teams.forEach((t) => {
+      if (t.sportId && t.sportId !== config.activeSportId) return;
+      if (
+        config.activeCategoryId &&
+        config.activeCategoryId !== 'ALL' &&
+        t.categoryId &&
+        t.categoryId !== config.activeCategoryId
+      ) {
+        return;
+      }
+      registerGroup(t.group);
+    });
+    matches.forEach((m) => {
+      if (m.sportId && m.sportId !== config.activeSportId) return;
+      if (
+        config.activeCategoryId &&
+        config.activeCategoryId !== 'ALL' &&
+        m.categoryId &&
+        m.categoryId !== config.activeCategoryId
+      ) {
+        return;
+      }
+      registerGroup(m.stage);
+    });
+
+    const allGroups = sortGroupsByVenue(Array.from(canonicalGroupMap.values()));
+
+    // Helper: check if a match has any scores recorded
+    const hasMatchScore = (m: Match): boolean => {
+      if (!m.scores) return false;
+      for (let s = 1; s <= maxSets; s++) {
+        const sc = m.scores[`set${s}` as keyof typeof m.scores] as { home: number; away: number } | undefined;
+        if (sc && (sc.home > 0 || sc.away > 0)) return true;
+      }
+      if (m.scores.pen?.played && (m.scores.pen.home > 0 || m.scores.pen.away > 0)) {
+        return true;
+      }
+      return false;
+    };
+
+    // Group teams and compute standings per group
+    allGroups.forEach((grp) => {
+      const normGrp = grp.trim().toLowerCase();
+
       const groupTeams = teams.filter((t) => {
-        if (t.group !== grp) return false;
+        if ((t.group || '').trim().toLowerCase() !== normGrp) return false;
         if (t.sportId && t.sportId !== config.activeSportId) return false;
         if (
           config.activeCategoryId &&
@@ -366,9 +420,16 @@ export default function App() {
         }
         return true;
       });
+
       const teamStats: Record<string, StandingItem> = {};
+      const nameToStatKey: Record<string, string> = {};
 
       groupTeams.forEach((t) => {
+        const normName = t.name.trim().toLowerCase();
+        // Avoid duplicate entries if two team records in the same group have the exact same name
+        if (nameToStatKey[normName]) {
+          return;
+        }
         teamStats[t.id] = {
           team: t,
           played: 0,
@@ -382,12 +443,42 @@ export default function App() {
           ptsAgainst: 0,
           form: [],
         };
+        nameToStatKey[normName] = t.id;
       });
 
-      // Filter matches in this group that have scores recorded or finished
+      const resolveTeamStats = (teamRef: Team): StandingItem | undefined => {
+        if (!teamRef) return undefined;
+        if (teamStats[teamRef.id]) return teamStats[teamRef.id];
+        const normName = (teamRef.name || '').trim().toLowerCase();
+        if (normName && nameToStatKey[normName] && teamStats[nameToStatKey[normName]]) {
+          return teamStats[nameToStatKey[normName]];
+        }
+        // Dynamically register team if present in a match of this group but missing from groupTeams
+        if (normName) {
+          const fallbackId = teamRef.id || `T_AUTO_${normGrp}_${normName}`;
+          const newItem: StandingItem = {
+            team: { ...teamRef, id: fallbackId, group: grp },
+            played: 0,
+            won: 0,
+            drawn: 0,
+            lost: 0,
+            points: 0,
+            setsWon: 0,
+            setsLost: 0,
+            ptsFor: 0,
+            ptsAgainst: 0,
+            form: [],
+          };
+          teamStats[fallbackId] = newItem;
+          nameToStatKey[normName] = fallbackId;
+          return newItem;
+        }
+        return undefined;
+      };
+
+      // Filter matches in this group that have scores recorded or are LIVE / FINISHED
       const groupMatches = matches.filter((m) => {
-        if (m.stage !== grp) return false;
-        if (m.status !== 'FINISHED' && m.status !== 'LIVE') return false;
+        if ((m.stage || '').trim().toLowerCase() !== normGrp) return false;
         if (m.sportId && m.sportId !== config.activeSportId) return false;
         if (
           config.activeCategoryId &&
@@ -397,20 +488,23 @@ export default function App() {
         ) {
           return false;
         }
+        const scored = hasMatchScore(m);
+        if (!scored && m.status !== 'FINISHED') return false;
         return true;
       });
 
       groupMatches.forEach((m) => {
-        const hStats = teamStats[m.home.id];
-        const aStats = teamStats[m.away.id];
+        const hStats = resolveTeamStats(m.home);
+        const aStats = resolveTeamStats(m.away);
         if (!hStats || !aStats) return;
-
-        hStats.played += 1;
-        aStats.played += 1;
 
         if (isFootball) {
           const hGoals = m.scores.set1.home;
           const aGoals = m.scores.set1.away;
+          const hasPen = m.scores.pen?.played && m.scores.pen.home !== m.scores.pen.away;
+
+          hStats.played += 1;
+          aStats.played += 1;
           hStats.ptsFor += hGoals;
           hStats.ptsAgainst += aGoals;
           aStats.ptsFor += aGoals;
@@ -430,6 +524,23 @@ export default function App() {
             hStats.lost += 1;
             hStats.points += ptsLoss;
             hStats.form.push('L');
+          } else if (hasPen) {
+            // Penalty shootout tie-breaker (2 pts for pen win, 1 pt for pen loss)
+            if (m.scores.pen.home > m.scores.pen.away) {
+              hStats.won += 1;
+              hStats.points += 2;
+              hStats.form.push('W');
+              aStats.lost += 1;
+              aStats.points += 1;
+              aStats.form.push('L');
+            } else {
+              aStats.won += 1;
+              aStats.points += 2;
+              aStats.form.push('W');
+              hStats.lost += 1;
+              hStats.points += 1;
+              hStats.form.push('L');
+            }
           } else {
             // Draw
             hStats.drawn += 1;
@@ -456,6 +567,14 @@ export default function App() {
             }
           }
 
+          // Only count match as played if at least one set or point was played, or status is FINISHED
+          if (hSets === 0 && aSets === 0 && hPointsTotal === 0 && aPointsTotal === 0 && m.status !== 'FINISHED') {
+            return;
+          }
+
+          hStats.played += 1;
+          aStats.played += 1;
+
           hStats.setsWon += hSets;
           hStats.setsLost += aSets;
           hStats.ptsFor += hPointsTotal;
@@ -466,20 +585,43 @@ export default function App() {
           aStats.ptsFor += aPointsTotal;
           aStats.ptsAgainst += hPointsTotal;
 
+          const useStandardSetPoints = ptsWin === 3 && ptsLoss === 0;
+
           if (hSets > aSets) {
             hStats.won += 1;
-            hStats.points += ptsWin;
             hStats.form.push('W');
             aStats.lost += 1;
-            aStats.points += ptsLoss;
             aStats.form.push('L');
+            if (useStandardSetPoints) {
+              // 2-0, 3-0, 3-1 => 3-0 pts; 2-1, 3-2 => 2-1 pts
+              if (hSets - aSets >= 2) {
+                hStats.points += 3;
+                aStats.points += 0;
+              } else {
+                hStats.points += 2;
+                aStats.points += 1;
+              }
+            } else {
+              hStats.points += ptsWin;
+              aStats.points += ptsLoss;
+            }
           } else if (aSets > hSets) {
             aStats.won += 1;
-            aStats.points += ptsWin;
             aStats.form.push('W');
             hStats.lost += 1;
-            hStats.points += ptsLoss;
             hStats.form.push('L');
+            if (useStandardSetPoints) {
+              if (aSets - hSets >= 2) {
+                aStats.points += 3;
+                hStats.points += 0;
+              } else {
+                aStats.points += 2;
+                hStats.points += 1;
+              }
+            } else {
+              aStats.points += ptsWin;
+              hStats.points += ptsLoss;
+            }
           } else if (hSets === aSets && (hSets > 0 || aSets > 0)) {
             hStats.drawn += 1;
             aStats.drawn += 1;
@@ -708,33 +850,46 @@ export default function App() {
 
   // Handlers for Match updates
   const handleUpdateMatch = (updated: Match) => {
-    if (!checkAuthOrPrompt()) return;
-
-    const { authorName, nowFormatted } = getAuthorStamp();
-    const stampedMatch: Match = {
-      ...updated,
-      lastUpdatedBy: authorName,
-      lastUpdatedAt: nowFormatted,
-    };
-
     const prevMatch = matches.find((m) => m.id === updated.id);
     const isScoreChanged =
       prevMatch && JSON.stringify(prevMatch.scores) !== JSON.stringify(updated.scores);
+    const isStatusChanged = prevMatch && prevMatch.status !== updated.status;
+    const isTimerTickOnly =
+      prevMatch &&
+      !isScoreChanged &&
+      !isStatusChanged &&
+      prevMatch.timer.running === updated.timer.running &&
+      prevMatch.timer.currentSet === updated.timer.currentSet &&
+      prevMatch.timer.elapsedSeconds !== updated.timer.elapsedSeconds;
 
-    setMatches((prev) => prev.map((m) => (m.id === stampedMatch.id ? stampedMatch : m)));
-    syncMatchToFirestore(stampedMatch);
-    broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', {
-      matches: matches.map((m) => (m.id === stampedMatch.id ? stampedMatch : m)),
+    if (!isTimerTickOnly && !checkAuthOrPrompt()) return;
+
+    const { authorName, nowFormatted } = getAuthorStamp();
+    const stampedMatch: Match = isTimerTickOnly
+      ? updated
+      : {
+          ...updated,
+          lastUpdatedBy: authorName,
+          lastUpdatedAt: nowFormatted,
+        };
+
+    setMatches((prev) => {
+      const next = prev.map((m) => (m.id === stampedMatch.id ? stampedMatch : m));
+      broadcastTournamentUpdate('TOURNAMENT_STATE_UPDATE', { matches: next });
+      return next;
     });
+    syncMatchToFirestore(stampedMatch);
 
-    logAuditAction(
-      isScoreChanged ? 'score' : 'update',
-      'match',
-      `${stampedMatch.code} (${stampedMatch.home.name} vs ${stampedMatch.away.name})`,
-      isScoreChanged
-        ? `Cập nhật điểm số/tỉ số trận ${stampedMatch.code}`
-        : `Chỉnh sửa thông tin lịch đấu/sân/thời gian trận ${stampedMatch.code}`
-    );
+    if (!isTimerTickOnly) {
+      logAuditAction(
+        isScoreChanged ? 'score' : 'update',
+        'match',
+        `${stampedMatch.code} (${stampedMatch.home.name} vs ${stampedMatch.away.name})`,
+        isScoreChanged
+          ? `Cập nhật điểm số/tỉ số trận ${stampedMatch.code}`
+          : `Chỉnh sửa thông tin lịch đấu/sân/thời gian trận ${stampedMatch.code}`
+      );
+    }
   };
 
   const handleAddMatch = (newM: Match) => {
@@ -830,10 +985,16 @@ export default function App() {
 
       setTeams((prev) => {
         const existingIds = new Set(prev.map((t) => t.id));
-        const existingNames = new Set(prev.map((t) => t.name.toLowerCase()));
-        const teamsToAdd = stampedNewTeams.filter(
-          (t) => !existingIds.has(t.id) && !existingNames.has(t.name.toLowerCase())
+        const existingNameAndGroup = new Set(
+          prev.map((t) => `${t.name.trim().toLowerCase()}___${(t.group || '').trim().toLowerCase()}`)
         );
+        const teamsToAdd = stampedNewTeams.filter((t) => {
+          const key = `${t.name.trim().toLowerCase()}___${(t.group || '').trim().toLowerCase()}`;
+          if (existingIds.has(t.id) || existingNameAndGroup.has(key)) return false;
+          existingIds.add(t.id);
+          existingNameAndGroup.add(key);
+          return true;
+        });
         const merged = [...prev, ...teamsToAdd];
         if (teamsToAdd.length > 0) {
           syncMultipleTeamsToFirestore(teamsToAdd);
@@ -850,6 +1011,21 @@ export default function App() {
       lastUpdatedBy: authorName,
       lastUpdatedAt: nowFormatted,
     }));
+
+    // Auto-discover any new groups/stages from imported matches and persist to config.customGroups
+    const importedGroups = Array.from(
+      new Set(stampedMatches.map((m) => (m.stage || '').trim()).filter(Boolean))
+    );
+    const existingGroupLower = new Set((config.customGroups || []).map((g) => g.trim().toLowerCase()));
+    const newlyDiscoveredGroups = importedGroups.filter((g) => !existingGroupLower.has(g.toLowerCase()));
+    if (newlyDiscoveredGroups.length > 0) {
+      const updatedConfig = {
+        ...config,
+        customGroups: sortGroupsByVenue([...(config.customGroups || []), ...newlyDiscoveredGroups]),
+      };
+      setConfig(updatedConfig);
+      syncConfigToFirestore(updatedConfig);
+    }
 
     setMatches((prev) => {
       let finalMatches: Match[];

@@ -92,7 +92,7 @@ export const TabStandings: React.FC<TabStandingsProps> = ({
               className="bg-transparent outline-none text-slate-700 dark:text-slate-200 cursor-pointer"
             >
               <option value="ALL">Tất cả bảng/khối</option>
-              {config.customGroups.map((g) => (
+              {Object.keys(standingsByGroup).map((g) => (
                 <option key={g} value={g}>
                   {g}
                 </option>

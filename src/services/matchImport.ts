@@ -202,10 +202,18 @@ export function parseMatchMatrix(
     };
   }
 
-  // Map existing teams for fast lookup by name (case-insensitive)
+  // Map existing teams for fast lookup by (name + group) and fallback by name (case-insensitive)
+  const teamByNameAndGroup = new Map<string, Team>();
   const teamByName = new Map<string, Team>();
   context.existingTeams.forEach((t) => {
-    if (t.name) teamByName.set(t.name.trim().toLowerCase(), t);
+    if (t.name) {
+      const normName = t.name.trim().toLowerCase();
+      const normGrp = (t.group || '').trim().toLowerCase();
+      teamByNameAndGroup.set(`${normName}___${normGrp}`, t);
+      if (!teamByName.has(normName)) {
+        teamByName.set(normName, t);
+      }
+    }
   });
 
   // Find header row: row containing both team 1 and team 2 or match code
@@ -289,9 +297,14 @@ export function parseMatchMatrix(
       cleanPitch = venueCode === 'main' ? 'Sân 1 (Điểm chính)' : 'Sân 1 (Phân hiệu)';
     }
 
-    // Check existing home / away teams
-    const homeTeamFound = teamByName.get(rawHome.toLowerCase());
-    const awayTeamFound = teamByName.get(rawAway.toLowerCase());
+    // Check existing home / away teams (prefer exact match in same stage/group first)
+    const normStage = cleanStage.trim().toLowerCase();
+    const homeTeamFound =
+      teamByNameAndGroup.get(`${rawHome.toLowerCase()}___${normStage}`) ||
+      teamByName.get(rawHome.toLowerCase());
+    const awayTeamFound =
+      teamByNameAndGroup.get(`${rawAway.toLowerCase()}___${normStage}`) ||
+      teamByName.get(rawAway.toLowerCase());
 
     const isHomeTeamExisting = !!homeTeamFound;
     const isAwayTeamExisting = !!awayTeamFound;
@@ -429,35 +442,49 @@ export function buildMatchesFromParsed(
   createdTeamsMap: Map<string, Team>,
   existingTeams: Team[]
 ): Match[] {
+  const existingByNameAndGroup = new Map<string, Team>();
   const existingMap = new Map<string, Team>();
-  existingTeams.forEach((t) => existingMap.set(t.name.trim().toLowerCase(), t));
+  existingTeams.forEach((t) => {
+    const normName = t.name.trim().toLowerCase();
+    const normGrp = (t.group || '').trim().toLowerCase();
+    existingByNameAndGroup.set(`${normName}___${normGrp}`, t);
+    if (!existingMap.has(normName)) {
+      existingMap.set(normName, t);
+    }
+  });
 
   return parsedItems.map((item, idx) => {
-    // Resolve home team
-    let homeTeam = existingMap.get(item.homeTeamName.toLowerCase());
-    if (!homeTeam) {
-      homeTeam = createdTeamsMap.get(item.homeTeamName.toLowerCase());
-    }
+    const normStage = (item.stage || '').trim().toLowerCase();
+    const normHome = item.homeTeamName.trim().toLowerCase();
+    const normAway = item.awayTeamName.trim().toLowerCase();
+
+    // Resolve home team (prefer team in the same group/stage)
+    let homeTeam =
+      existingByNameAndGroup.get(`${normHome}___${normStage}`) ||
+      createdTeamsMap.get(`${normHome}___${normStage}`) ||
+      existingMap.get(normHome) ||
+      createdTeamsMap.get(normHome);
     if (!homeTeam) {
       homeTeam = {
         id: 'T_' + Date.now() + '_H_' + idx,
         name: item.homeTeamName,
         group: item.stage,
-        gender: 'male',
+        gender: normStage.includes('nữ') || normStage.includes('nu') ? 'female' : 'male',
       };
     }
 
-    // Resolve away team
-    let awayTeam = existingMap.get(item.awayTeamName.toLowerCase());
-    if (!awayTeam) {
-      awayTeam = createdTeamsMap.get(item.awayTeamName.toLowerCase());
-    }
+    // Resolve away team (prefer team in the same group/stage)
+    let awayTeam =
+      existingByNameAndGroup.get(`${normAway}___${normStage}`) ||
+      createdTeamsMap.get(`${normAway}___${normStage}`) ||
+      existingMap.get(normAway) ||
+      createdTeamsMap.get(normAway);
     if (!awayTeam) {
       awayTeam = {
         id: 'T_' + Date.now() + '_A_' + idx,
         name: item.awayTeamName,
         group: item.stage,
-        gender: 'male',
+        gender: normStage.includes('nữ') || normStage.includes('nu') ? 'female' : 'male',
       };
     }
 

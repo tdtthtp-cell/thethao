@@ -276,8 +276,22 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
       );
     }
 
+    const hasAnyScore =
+      newScores.set1.home > 0 ||
+      newScores.set1.away > 0 ||
+      newScores.set2.home > 0 ||
+      newScores.set2.away > 0 ||
+      newScores.set3.home > 0 ||
+      newScores.set3.away > 0 ||
+      newScores.set4.home > 0 ||
+      newScores.set4.away > 0 ||
+      newScores.set5.home > 0 ||
+      newScores.set5.away > 0 ||
+      (newScores.pen?.played && (newScores.pen.home > 0 || newScores.pen.away > 0));
+
     const updated: Match = {
       ...m,
+      status: m.status === 'UPCOMING' && hasAnyScore ? 'LIVE' : m.status,
       scores: newScores,
     };
     onUpdateMatch(updated);
@@ -314,8 +328,22 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
       newScores.set5 = { ...newScores.set5, [teamSide]: validVal };
     }
 
+    const hasAnyScore =
+      newScores.set1.home > 0 ||
+      newScores.set1.away > 0 ||
+      newScores.set2.home > 0 ||
+      newScores.set2.away > 0 ||
+      newScores.set3.home > 0 ||
+      newScores.set3.away > 0 ||
+      newScores.set4.home > 0 ||
+      newScores.set4.away > 0 ||
+      newScores.set5.home > 0 ||
+      newScores.set5.away > 0 ||
+      (newScores.pen?.played && (newScores.pen.home > 0 || newScores.pen.away > 0));
+
     const updated: Match = {
       ...m,
+      status: m.status === 'UPCOMING' && hasAnyScore ? 'LIVE' : m.status,
       scores: newScores,
     };
     onUpdateMatch(updated);
@@ -1486,7 +1514,14 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
                               else if (s === 4) newScores.set4 = { ...newScores.set4, home: val };
                               else if (s === 5) newScores.set5 = { ...newScores.set5, home: val };
 
-                              const updated: Match = { ...quickScoreMatch, scores: newScores };
+                              const updated: Match = {
+                                ...quickScoreMatch,
+                                status:
+                                  quickScoreMatch.status === 'UPCOMING' && val > 0
+                                    ? 'FINISHED'
+                                    : quickScoreMatch.status,
+                                scores: newScores,
+                              };
                               setQuickScoreMatch(updated);
                               onUpdateMatch(updated);
                             }}
@@ -1509,7 +1544,14 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
                               else if (s === 4) newScores.set4 = { ...newScores.set4, away: val };
                               else if (s === 5) newScores.set5 = { ...newScores.set5, away: val };
 
-                              const updated: Match = { ...quickScoreMatch, scores: newScores };
+                              const updated: Match = {
+                                ...quickScoreMatch,
+                                status:
+                                  quickScoreMatch.status === 'UPCOMING' && val > 0
+                                    ? 'FINISHED'
+                                    : quickScoreMatch.status,
+                                scores: newScores,
+                              };
                               setQuickScoreMatch(updated);
                               onUpdateMatch(updated);
                             }}
@@ -1541,6 +1583,10 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
                             const val = Math.max(0, parseInt(e.target.value, 10) || 0);
                             const updated: Match = {
                               ...quickScoreMatch,
+                              status:
+                                quickScoreMatch.status === 'UPCOMING' && val > 0
+                                  ? 'FINISHED'
+                                  : quickScoreMatch.status,
                               scores: {
                                 ...quickScoreMatch.scores,
                                 pen: { ...quickScoreMatch.scores.pen, home: val, played: true },
@@ -1562,6 +1608,10 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
                             const val = Math.max(0, parseInt(e.target.value, 10) || 0);
                             const updated: Match = {
                               ...quickScoreMatch,
+                              status:
+                                quickScoreMatch.status === 'UPCOMING' && val > 0
+                                  ? 'FINISHED'
+                                  : quickScoreMatch.status,
                               scores: {
                                 ...quickScoreMatch.scores,
                                 pen: { ...quickScoreMatch.scores.pen, away: val, played: true },
@@ -1615,8 +1665,31 @@ export const TabMatches: React.FC<TabMatchesProps> = ({
 
                   <button
                     type="button"
-                    onClick={() => setQuickScoreMatch(null)}
-                    className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer font-bold"
+                    onClick={() => {
+                      const sc = quickScoreMatch.scores;
+                      const hasAnyScore =
+                        sc.set1.home > 0 ||
+                        sc.set1.away > 0 ||
+                        sc.set2.home > 0 ||
+                        sc.set2.away > 0 ||
+                        sc.set3.home > 0 ||
+                        sc.set3.away > 0 ||
+                        sc.set4.home > 0 ||
+                        sc.set4.away > 0 ||
+                        sc.set5.home > 0 ||
+                        sc.set5.away > 0 ||
+                        (sc.pen?.played && (sc.pen.home > 0 || sc.pen.away > 0));
+                      const finalMatch: Match = {
+                        ...quickScoreMatch,
+                        status:
+                          quickScoreMatch.status === 'UPCOMING' && hasAnyScore
+                            ? 'FINISHED'
+                            : quickScoreMatch.status,
+                      };
+                      onUpdateMatch(finalMatch);
+                      setQuickScoreMatch(null);
+                    }}
+                    className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition shadow-xs cursor-pointer"
                   >
                     Hoàn Tất & Lưu
                   </button>
